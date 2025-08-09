@@ -12,6 +12,7 @@ import { connectDB, disconnectDB } from "./config/db";
 import { errorHandler } from "./middlewares/errorHandlerMiddleware";
 import { HTTPSTATUS } from "./config/http.config";
 import { asyncHandler } from "./middlewares/asyncHandlerMiddleware";
+import { BadRequestException } from "./utils/appError";
 
 const app = express();
 const BASE_PATH = config.BASE_PATH;
@@ -40,9 +41,10 @@ app.use(
 app.get(
   "/",
   asyncHandler(async (req: Request, res: Response) => {
-    res.status(HTTPSTATUS.OK).json({
-      message: "Hello world!",
-    });
+    throw new BadRequestException("bad badf");
+    // res.status(HTTPSTATUS.OK).json({
+    //   message: "Hello world!",
+    // });
   })
 );
 
