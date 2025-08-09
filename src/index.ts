@@ -10,6 +10,8 @@ import Logger from "./utils/logger";
 import morganMiddleware from "./middlewares/morgan-middleware";
 import { connectDB, disconnectDB } from "./config/db";
 import { errorHandler } from "./middlewares/errorHandlerMiddleware";
+import { HTTPSTATUS } from "./config/http.config";
+import { asyncHandler } from "./middlewares/asyncHandlerMiddleware";
 
 const app = express();
 const BASE_PATH = config.BASE_PATH;
@@ -35,11 +37,14 @@ app.use(
   })
 );
 
-app.get("/", (req: Request, res: Response, next: NextFunction) => {
-  res.status(200).json({
-    message: "Hello world!",
-  });
-});
+app.get(
+  "/",
+  asyncHandler(async (req: Request, res: Response) => {
+    res.status(HTTPSTATUS.OK).json({
+      message: "Hello world!",
+    });
+  })
+);
 
 app.use(errorHandler);
 
