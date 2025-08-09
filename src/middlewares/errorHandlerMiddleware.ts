@@ -14,7 +14,7 @@ export const errorHandler: ErrorRequestHandler = (
   res: Response,
   next: NextFunction
 ): any => {
-  Logger.http(`Erro Occurred on PATH: ${req.path} `, error);
+  Logger.error(`Erro Occurred on PATH: ${req.path} `, error);
   if (error instanceof SyntaxError) {
     return res.status(HTTPSTATUS.BAD_REQUEST).json({
       message: "Invalid JSON format. Please check your request body.",
