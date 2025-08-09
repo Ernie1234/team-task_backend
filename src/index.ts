@@ -9,6 +9,7 @@ import { config } from "./config/app.config";
 import Logger from "./utils/logger";
 import morganMiddleware from "./middlewares/morgan-middleware";
 import { connectDB, disconnectDB } from "./config/db";
+import { errorHandler } from "./middlewares/errorHandlerMiddleware";
 
 const app = express();
 const BASE_PATH = config.BASE_PATH;
@@ -39,6 +40,8 @@ app.get("/", (req: Request, res: Response, next: NextFunction) => {
     message: "Hello world!",
   });
 });
+
+app.use(errorHandler);
 
 const startServer = async () => {
   try {
