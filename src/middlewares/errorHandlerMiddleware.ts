@@ -1,4 +1,5 @@
 import { HTTPSTATUS } from "@/config/http.config";
+import { ErrorCodeEnum } from "@/enums/errorCode.enum";
 import { AppError } from "@/utils/appError";
 import Logger from "@/utils/logger";
 import type {
@@ -7,6 +8,19 @@ import type {
   Request,
   Response,
 } from "express";
+import { z, ZodError } from "zod";
+
+const formatZodError = (res: Response, error: z.ZodError) => {
+  const errors = error?.issues.map((err) => ({
+    field: err.path.join("."),
+    message: err.message,
+  }));
+  return res.status(HTTPSTATUS.BAD_REQUEST).json({
+    message: error.message,
+    errors: errors,
+    errorCode: ErrorCodeEnum.VALIDATION_ERROR,
+  });
+};
 
 export const errorHandler: ErrorRequestHandler = (
   error: Error,
@@ -27,6 +41,11 @@ export const errorHandler: ErrorRequestHandler = (
       errorCode: error.errorCode,
     });
   }
+
+  if (error instanceof ZodError) {
+    return formatZodError(res, error);
+  }
+
   return res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
     message: "Internal Server Error",
     error: error?.message || "Unknown error occurred",
