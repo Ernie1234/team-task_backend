@@ -20,6 +20,6 @@ router.get("/members/:id", getWorkspaceMembersController);
 router.get("/analytics/:id", getWorkspaceAnalyticsController);
 router.put("/change/member/role/:id", changeWorkspaceMemberRoleController);
 router.put("/update/:id", updateWorkspaceByIdController);
-router.put("/delete/:id", deleteWorkspaceByIdController);
+router.delete("/delete/:id", deleteWorkspaceByIdController);
 
 export default router;
