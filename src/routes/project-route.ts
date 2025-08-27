@@ -3,6 +3,6 @@ import { Router } from "express";
 
 const router = Router();
 
-router.post("/", createProjectController);
+router.post("/create", createProjectController);
 
 export default router;
