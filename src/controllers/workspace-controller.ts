@@ -5,15 +5,18 @@ import { getMemberRoleInWorkspace } from "@/services/member-service";
 import {
   changeMemberRoleService,
   createWorkspaceService,
+  deleteWorkspaceByIdService,
   getUserWorkspacesIsMemberService,
   getWorkspaceAnalyticsService,
   getWorkspaceByIdService,
   getWorkspaceMembersService,
+  updateWorkspaceByIdService,
 } from "@/services/workspace-service";
 import { roleGuard } from "@/utils/roleGuard";
 import {
   changeRoleSchema,
   createWorkspaceSchema,
+  updateWorkspaceSchema,
   workspaceIdSchema,
 } from "@/validation/workspace-validation";
 import type { Request, Response } from "express";
@@ -115,6 +118,48 @@ export const changeWorkspaceMemberRoleController = asyncHandler(
       status: true,
       message: "Member role changed successfully!",
       member,
+    });
+  }
+);
+export const updateWorkspaceByIdController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user?._id;
+    const workspaceId = workspaceIdSchema.parse(req.params.id);
+    const { name, description } = updateWorkspaceSchema.parse(req.body);
+
+    const { role } = await getMemberRoleInWorkspace(userId, workspaceId);
+    roleGuard(role, [Permissions.EDIT_WORKSPACE]);
+
+    const { workspace } = await updateWorkspaceByIdService({
+      workspaceId,
+      name,
+      description,
+    });
+
+    return res.status(HTTPSTATUS.OK).json({
+      status: true,
+      message: "Workspace updated successfully!",
+      workspace,
+    });
+  }
+);
+export const deleteWorkspaceByIdController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user?._id;
+    const workspaceId = workspaceIdSchema.parse(req.params.id);
+
+    const { role } = await getMemberRoleInWorkspace(userId, workspaceId);
+    roleGuard(role, [Permissions.DELETE_WORKSPACE]);
+
+    const { currentWorkspace } = await deleteWorkspaceByIdService({
+      workspaceId,
+      userId,
+    });
+
+    return res.status(HTTPSTATUS.OK).json({
+      status: true,
+      message: "Workspace deleted successfully!",
+      currentWorkspace,
     });
   }
 );
