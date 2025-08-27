@@ -1,3 +1,5 @@
+import { Router } from "express";
+
 import {
   changeWorkspaceMemberRoleController,
   createWorkspaceController,
@@ -6,7 +8,6 @@ import {
   getWorkspaceByIdController,
   getWorkspaceMembersController,
 } from "@/controllers/workspace-controller";
-import { Router } from "express";
 
 const router = Router();
 

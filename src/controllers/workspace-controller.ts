@@ -113,8 +113,8 @@ export const changeWorkspaceMemberRoleController = asyncHandler(
 
     return res.status(HTTPSTATUS.OK).json({
       status: true,
-      message: "Workspace Analytics retrieved successfully!",
-      analytics,
+      message: "Member role changed successfully!",
+      member,
     });
   }
 );
