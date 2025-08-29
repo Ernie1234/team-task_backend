@@ -7,7 +7,9 @@ import type { Request, Response } from "express";
 import { HTTPSTATUS } from "@/config/http.config";
 import {
   createTaskService,
+  deleteTaskService,
   getAllTasksService,
+  getATaskService,
   updateTaskService,
 } from "@/services/task-service";
 import { BadRequestException } from "@/utils/appError";
@@ -127,16 +129,21 @@ export const getAllTasksInProjectController = asyncHandler(
 export const getTaskByIdController = asyncHandler(
   async (req: Request, res: Response) => {
     const userId = req.user?._id;
-    const workspaceId = workspaceIdSchema.parse(req?.params?.workspaceId);
+    if (!userId)
+      throw new BadRequestException("User ID is missing from the request.");
+
+    const { workspaceId, projectId, taskId } = taskParamsSchema.parse(
+      req.params
+    );
 
     const { role } = await getMemberRoleInWorkspace(userId, workspaceId);
-    roleGuard(role, [Permissions.CREATE_TASK]);
+    roleGuard(role, [Permissions.VIEW_ONLY]);
 
-    const { task } = await createTaskService(validatedData);
+    const { task } = await getATaskService({ workspaceId, projectId, taskId });
 
-    return res.status(HTTPSTATUS.CREATED).json({
+    return res.status(HTTPSTATUS.OK).json({
       status: true,
-      message: "Task created successfully!",
+      message: "Task fetched successfully!",
       task,
     });
   }
@@ -173,16 +180,22 @@ export const updateTaskByIdController = asyncHandler(
 export const deleteTaskByIdController = asyncHandler(
   async (req: Request, res: Response) => {
     const userId = req.user?._id;
-    const workspaceId = workspaceIdSchema.parse(req?.params?.workspaceId);
+    const { workspaceId, projectId, taskId } = taskParamsSchema.parse(
+      req.params
+    );
 
     const { role } = await getMemberRoleInWorkspace(userId, workspaceId);
-    roleGuard(role, [Permissions.CREATE_TASK]);
+    roleGuard(role, [Permissions.DELETE_TASK]);
 
-    const { task } = await createTaskService(validatedData);
+    const { task } = await deleteTaskService({
+      workspaceId,
+      projectId,
+      taskId,
+    });
 
     return res.status(HTTPSTATUS.CREATED).json({
       status: true,
-      message: "Task created successfully!",
+      message: "Task deleted successfully!",
       task,
     });
   }

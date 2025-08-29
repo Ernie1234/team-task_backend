@@ -184,3 +184,61 @@ export const getAllTasksService = async (
 
   return { tasks, totalCount };
 };
+
+/**
+ * Retrieves a single task from the database.
+ * @param data - The data containing workspace, project, and task IDs.
+ * @returns An object containing the task document.
+ */
+export const getATaskService = async ({
+  workspaceId,
+  projectId,
+  taskId,
+}: {
+  workspaceId: string;
+  projectId: string;
+  taskId: string | undefined;
+}) => {
+  const isTaskAvailable = await TaskModel.findById({ _id: taskId });
+  if (!isTaskAvailable) throw new NotFoundException("Task not found!");
+
+  const task = await TaskModel.findOne({
+    workspace: workspaceId,
+    project: projectId,
+    _id: taskId,
+  });
+
+  return { task };
+};
+
+/**
+ * Deletes a task from the database.
+ * @param data - The validated task data including task, project, and workspace IDs.
+ * @returns An object containing the deleted task document.
+ */
+export const deleteTaskService = async ({
+  workspaceId,
+  projectId,
+  taskId,
+}: {
+  workspaceId: string;
+  projectId: string;
+  taskId: string | undefined;
+}) => {
+  const isTaskAvailable = await TaskModel.findById({ _id: taskId });
+  if (!isTaskAvailable) throw new NotFoundException("Task not found!");
+
+  const deletedTask = await TaskModel.findOneAndDelete({
+    _id: taskId,
+    workspace: workspaceId,
+    project: projectId,
+  });
+
+  if (!deletedTask) {
+    throw new NotFoundException(
+      "Task not found or does not belong to the specified project/workspace."
+    );
+  }
+
+  return { task: deletedTask };
+};
