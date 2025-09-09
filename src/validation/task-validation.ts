@@ -74,7 +74,7 @@ export const updateTaskBodySchema = z.object({
     })
     .nullable()
     .optional(),
-  dueDate: z.date().nullable().optional(),
+  dueDate: z.coerce.date().optional(),
 });
 
 // A combined schema for the UPDATE request that includes body and params.
