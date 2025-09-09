@@ -112,17 +112,21 @@ export const getAllTasksInProjectController = asyncHandler(
     const { role } = await getMemberRoleInWorkspace(userId, workspaceId);
     roleGuard(role, [Permissions.VIEW_ONLY]);
 
-    const { tasks, totalCount } = await getAllTasksService({
-      workspaceId,
-      filters,
-      pagination,
-    });
+    const { tasks, totalCount, notifications, activities } =
+      await getAllTasksService({
+        workspaceId,
+        filters,
+        pagination,
+        userId,
+      });
 
     return res.status(HTTPSTATUS.OK).json({
       status: true,
       message: "Tasks retrieved successfully!",
       tasks,
       totalCount,
+      notifications,
+      activities,
     });
   }
 );

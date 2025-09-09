@@ -10,6 +10,8 @@ import WorkspaceModel from "@/models/workspace-model";
 import { BadRequestException, NotFoundException } from "@/utils/appError";
 import ProjectModel from "@/models/project-model";
 import Logger from "@/utils/logger";
+import NotificationModel from "@/models/notification-model";
+import ActivityModel from "@/models/activity-model";
 
 export const createWorkspaceService = async (
   userId: string,
@@ -56,9 +58,26 @@ export const getUserWorkspacesIsMemberService = async (userId: string) => {
 export const getWorkspaceByIdService = async (workspaceId: string) => {
   const workspace = await WorkspaceModel.findById(workspaceId);
   const members = await MemberModel.find({ workspaceId }).populate("role");
+  const notifications = await NotificationModel.find({
+    $or: [
+      { workspaceId: workspaceId },
+      { link: { $regex: `^/workspaces/${workspaceId}/`, $options: "i" } },
+    ],
+  })
+    .populate("sender", "name email profilePicture -password")
+    .populate("recipient", "name email profilePicture -password")
+    .sort({ createdAt: -1 });
+  const activities = await ActivityModel.find({
+    workspaceId: workspaceId,
+  })
+    .populate("user", "name email profilePicture -password")
+    .sort({ createdAt: -1 });
+
   const workspaceWithMembers = {
     ...workspace?.toObject(),
     members,
+    notifications,
+    activities,
   };
 
   return { workspaceWithMembers };

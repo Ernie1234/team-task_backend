@@ -5,9 +5,10 @@ import {
   type TaskStatusEnumType,
 } from "@/enums/task-enum";
 import { generateTaskCode } from "@/utils/generate-invite-code";
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Document, Schema, Types } from "mongoose";
 
 export interface TaskDocument extends Document {
+  _id: Types.ObjectId;
   taskCode: string;
   title: string;
   description: string | null;

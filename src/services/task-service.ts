@@ -1,8 +1,13 @@
 import { TaskPriorityEnum, TaskStatusEnum } from "@/enums/task-enum";
+import type { ActivityDocument } from "@/models/activity-model";
+import ActivityModel from "@/models/activity-model";
 import MemberModel from "@/models/member-model";
+import type { NotificationDocument } from "@/models/notification-model";
+import NotificationModel from "@/models/notification-model";
 import ProjectModel from "@/models/project-model";
 import type { TaskDocument } from "@/models/task-model";
 import TaskModel from "@/models/task-model";
+import UserModel from "@/models/user-model";
 import {
   BadRequestException,
   InternalServerException,
@@ -47,6 +52,7 @@ export const createTaskService = async (
       if (!isAssigneduserMember)
         throw new Error("Assigned user is not a member of this workspace");
     }
+
     const newTask = new TaskModel({
       title: data.title,
       description: data.description,
@@ -61,6 +67,33 @@ export const createTaskService = async (
 
     const savedTask = await newTask.save();
 
+    if (data.assignedTo) {
+      const creator = await UserModel.findById(data.createdBy).select("name");
+      const creatorName = creator?.name || "Someone";
+      const notificationMessage = `\"${creatorName}\" assigned you a new task: \"${data.title}\".`;
+
+      const notificationData = {
+        recipient: data.assignedTo,
+        sender: data.createdBy,
+        message: notificationMessage,
+        link: `/workspaces/${savedTask.workspace.toString()}projects/${savedTask.project.toString()}/tasks/${savedTask._id.toString()}`,
+        isRead: false,
+      };
+
+      await NotificationModel.create(notificationData);
+    }
+
+    // Create activity log
+    const activityData = {
+      user: data.createdBy,
+      action: "created",
+      targetType: "Task",
+      targetId: savedTask._id,
+      workspaceId: data.workspace,
+    };
+
+    await ActivityModel.create(activityData);
+
     // Return the newly created and saved task document
     return { task: savedTask };
   } catch (error) {
@@ -70,6 +103,7 @@ export const createTaskService = async (
     throw new InternalServerException("Failed to create task.");
   }
 };
+
 type UpdateTaskData = z.infer<typeof updateTaskBodySchema> &
   z.infer<typeof taskParamsSchema> & {
     userId: string;
@@ -134,6 +168,7 @@ interface GetAllTasksServiceData {
     pageSize: number;
     pageNumber: number;
   };
+  userId: any;
 }
 
 /**
@@ -143,19 +178,20 @@ interface GetAllTasksServiceData {
  */
 export const getAllTasksService = async (
   data: GetAllTasksServiceData
-): Promise<{ tasks: TaskDocument[]; totalCount: number }> => {
-  const { workspaceId, filters, pagination } = data;
+): Promise<{
+  tasks: TaskDocument[];
+  totalCount: number;
+  notifications?: NotificationDocument[];
+  activities?: ActivityDocument[];
+}> => {
+  const { workspaceId, filters, pagination, userId } = data;
   const { pageSize, pageNumber } = pagination;
 
   const query: any = { workspace: workspaceId };
 
-  // Apply projectId filter if it exists and is valid
   if (filters.projectId) {
-    // You may want to add validation here to ensure it's a valid ObjectId format
     query.project = filters.projectId;
   }
-
-  // Apply filters based on the query parameters
   if (filters.status) {
     query.status = { $in: filters.status };
   }
@@ -182,7 +218,33 @@ export const getAllTasksService = async (
 
   const totalCount = await TaskModel.countDocuments(query);
 
-  return { tasks, totalCount };
+  const taskIds = tasks.map((task) => task._id);
+  // Get notifications for the current user related to these tasks
+  const notificationQuery: any = {
+    recipient: userId,
+    link: {
+      $in: tasks.map(
+        (task) =>
+          `/workspaces/${task.workspace.toString()}projects/${task.project.toString()}/tasks/${task._id.toString()}`
+      ),
+    },
+  };
+
+  const notifications = await NotificationModel.find(notificationQuery)
+    .populate("sender", "name email profilePicture -password")
+    .populate("recipient", "name email profilePicture -password")
+    .sort({ createdAt: -1 });
+
+  // Get activities related to this task
+  const activities = await ActivityModel.find({
+    targetType: "Task",
+    targetId: taskIds,
+    workspaceId: workspaceId,
+  })
+    .populate("user", "name email profilePicture -password")
+    .sort({ createdAt: -1 });
+
+  return { tasks, totalCount, notifications, activities };
 };
 
 /**
