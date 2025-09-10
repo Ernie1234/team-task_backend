@@ -76,7 +76,7 @@ export const createTaskService = async (
         recipient: data.assignedTo,
         sender: data.createdBy,
         message: notificationMessage,
-        link: `/workspaces/${savedTask.workspace.toString()}projects/${savedTask.project.toString()}/tasks/${savedTask._id.toString()}`,
+        link: `/workspaces/${savedTask.workspace.toString()}/projects/${savedTask.project.toString()}/tasks/${savedTask._id.toString()}`,
         isRead: false,
       };
 

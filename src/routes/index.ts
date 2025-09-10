@@ -7,6 +7,7 @@ import workspaceRoute from "./workspace-route";
 import membersRoute from "./member-route";
 import projectsRoute from "./project-route";
 import taskRoute from "./task-route";
+import notificationRoute from "./notification-route";
 
 const apiRouter: Router = Router();
 
@@ -16,5 +17,6 @@ apiRouter.use("/workspace", isAuthenticated, workspaceRoute);
 apiRouter.use("/members", isAuthenticated, membersRoute);
 apiRouter.use("/projects", isAuthenticated, projectsRoute);
 apiRouter.use("/tasks", isAuthenticated, taskRoute);
+apiRouter.use("/notifications", isAuthenticated, notificationRoute);
 
 export default apiRouter;
