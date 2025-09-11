@@ -5,6 +5,7 @@ import {
   passwordResetRequestTemplate,
   passwordResetSuccessTemplate,
   verificationEmailTemplate,
+  workspaceInvitationTemplate,
 } from "./email-template";
 
 const baseUrl = config.FRONTEND_ORIGIN;
@@ -106,6 +107,35 @@ export const sendResetSuccessEmail = async (email: string): Promise<void> => {
     Logger.error("Error sending password reset success email", error);
     throw new Error(
       `Error sending password reset success email: ${(error as Error).message}`
+    );
+  }
+};
+
+export const sendWorkspaceInvitationEmail = async (
+  email: string,
+  inviterName: string,
+  workspaceName: string,
+  inviteURL: string
+): Promise<void> => {
+  const recipient: Recipient[] = [{ email }];
+
+  try {
+    const response = await mailtrapClient.send({
+      from: sender,
+      to: recipient,
+      subject: "You've been invited to join a Team Task workspace!",
+      html: workspaceInvitationTemplate
+        .replace("{inviterName}", inviterName)
+        .replace("{workspaceName}", workspaceName)
+        .replace("{inviteURL}", inviteURL),
+      category: "Workspace Invitation",
+    });
+
+    Logger.info("Workspace invitation email sent successfully", response);
+  } catch (error) {
+    Logger.error("Error sending workspace invitation email", error);
+    throw new Error(
+      `Error sending workspace invitation email: ${(error as Error).message}`
     );
   }
 };

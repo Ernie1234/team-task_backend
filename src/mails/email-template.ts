@@ -96,3 +96,34 @@ export const passwordResetRequestTemplate = `
 </body>
 </html>
 `;
+
+export const workspaceInvitationTemplate = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>You're Invited!</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background: linear-gradient(to right, #2196F3, #1976D2); padding: 20px; text-align: center;">
+    <h1 style="color: white; margin: 0;">You're Invited to a Workspace!</h1>
+  </div>
+  <div style="background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+    <p>Hello,</p>
+    <p>You have been invited by <strong>{inviterName}</strong> to join the <strong>{workspaceName}</strong> workspace on Team Task.</p>
+    <p>Team Task is a powerful tool for collaboration and project management. Join the workspace to start collaborating on tasks, projects, and more!</p>
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="{inviteURL}" style="background-color: #2196F3; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Join Workspace</a>
+    </div>
+    <p>If you're unable to click the button, you can copy and paste the following URL into your browser:</p>
+    <p style="word-break: break-all; font-size: 0.9em; background-color: #eee; padding: 10px; border-radius: 5px;">{inviteURL}</p>
+    <p>We look forward to seeing you there!</p>
+    <p>Best regards,<br>Team Task</p>
+  </div>
+  <div style="text-align: center; margin-top: 20px; color: #888; font-size: 0.8em;">
+    <p>This is an automated message, please do not reply to this email.</p>
+  </div>
+</body>
+</html>
+`;
