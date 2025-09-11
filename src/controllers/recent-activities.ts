@@ -19,7 +19,7 @@ export const getAllWorkspaceRecentActivitiesController = asyncHandler(
       workspaceId,
     })
       .sort({ createdAt: -1 })
-      .populate("user", "name email -password");
+      .populate("user", "name email profilePicture -password");
 
     return res.status(HTTPSTATUS.OK).json({
       status: true,
