@@ -4,7 +4,10 @@ import { config } from "@/config/app.config";
 import { asyncHandler } from "@/middlewares/asyncHandlerMiddleware";
 import { registerUserSchema } from "@/validation/auth-validation";
 import { HTTPSTATUS } from "@/config/http.config";
-import { registerUserService } from "@/services/auth-service";
+import {
+  registerUserService,
+  verifyEmailService,
+} from "@/services/auth-service";
 import passport from "passport";
 import Logger from "@/utils/logger";
 
@@ -104,5 +107,13 @@ export const logoutUserController = asyncHandler(
           .json({ status: true, message: "Logged out successfully!" });
       });
     });
+  }
+);
+
+export const verifyEmailController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email, token } = req.body;
+    await verifyEmailService({ email, token });
+    res.status(HTTPSTATUS.OK).json({ message: "Email verified successfully." });
   }
 );

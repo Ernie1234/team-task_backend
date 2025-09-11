@@ -4,6 +4,7 @@ import {
   loginUserController,
   logoutUserController,
   registerUserController,
+  verifyEmailController,
 } from "@/controllers/auth-controller";
 import { Router } from "express";
 import passport from "passport";
@@ -30,5 +31,7 @@ router.get(
   }),
   googleLoginCallback
 );
+
+router.post("/verify-email", verifyEmailController);
 
 export default router;

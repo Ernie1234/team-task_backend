@@ -13,6 +13,9 @@ export interface UserDocument extends Document {
   currentWorkspace: mongoose.Types.ObjectId | null;
   comparePassword(value: string): Promise<boolean>;
   omitPassword(): Omit<UserDocument, "password">;
+  isVerified: boolean;
+  verificationToken?: string;
+  verificationTokenExpiresAt?: Date;
 }
 
 const userSchema = new Schema<UserDocument>(
@@ -37,6 +40,14 @@ const userSchema = new Schema<UserDocument>(
     currentWorkspace: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Workspace",
+    },
+    // resetPasswordToken: String,
+    // resetPasswordExpires: Date,
+    verificationTokenExpiresAt: Date,
+    verificationToken: String,
+    isVerified: {
+      type: Boolean,
+      default: false,
     },
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date, default: null },

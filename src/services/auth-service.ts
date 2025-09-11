@@ -1,5 +1,6 @@
 import { ProviderEnum } from "@/enums/account-provider-enum";
 import { Roles } from "@/enums/role-enum";
+import { sendVerificationEmail, sendWelcomeEmail } from "@/mails/emails";
 import AccountModel from "@/models/account-model";
 import MemberModel from "@/models/member-model";
 import RoleModel from "@/models/role-model";
@@ -10,6 +11,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@/utils/appError";
+import { generateVerificationToken } from "@/utils/generate-functions";
 import Logger from "@/utils/logger";
 import type { TRegisterUser } from "@/validation/auth-validation";
 import mongoose from "mongoose";
@@ -32,6 +34,7 @@ export const loginOrCreateAccount = async (data: {
         email,
         name: displayName,
         profilePicture: picture || null,
+        isVerified: true,
       });
       await user.save({ session });
 
@@ -90,10 +93,17 @@ export const registerUserService = async (body: TRegisterUser) => {
       Logger.info("Email already exist!");
       throw new BadRequestException("Invalid credentials!");
     }
+
+    const verificationToken = generateVerificationToken();
+    const verificationTokenExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
     const user = new UserModel({
       email,
       name,
       password,
+      isVerified: false,
+      verificationToken,
+      verificationTokenExpiresAt,
     });
     await user.save({ session });
 
@@ -129,6 +139,9 @@ export const registerUserService = async (body: TRegisterUser) => {
 
     user.currentWorkspace = workspace._id as mongoose.Types.ObjectId;
     await user.save({ session });
+
+    await sendVerificationEmail(email, verificationToken);
+
     Logger.info("User Registered successfully: ", user);
 
     await session.commitTransaction();
@@ -167,4 +180,32 @@ export const verifyUserService = async ({
   }
 
   return user.omitPassword();
+};
+
+export const verifyEmailService = async ({
+  email,
+  token,
+}: {
+  email: string;
+  token: string;
+}) => {
+  const user = await UserModel.findOne({
+    email,
+    verificationToken: token,
+    verificationTokenExpiresAt: { $gt: new Date() },
+  });
+
+  if (!user) {
+    throw new BadRequestException("Invalid or expired verification token.");
+  }
+
+  user.isVerified = true;
+  user.verificationToken = undefined;
+  user.verificationTokenExpiresAt = undefined;
+  await user.save();
+
+  // Send welcome email after successful verification
+  if (user.email && user.name) {
+    await sendWelcomeEmail(user.email, user.name);
+  }
 };
