@@ -195,6 +195,7 @@ export const deleteTaskByIdController = asyncHandler(
       workspaceId,
       projectId,
       taskId,
+      userId,
     });
 
     return res.status(HTTPSTATUS.CREATED).json({

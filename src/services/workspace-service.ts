@@ -45,6 +45,15 @@ export const createWorkspaceService = async (
   await member.save();
   user.currentWorkspace = workspace._id as mongoose.Types.ObjectId;
   await user.save();
+
+  // Create an activity log for the new workspace
+  const activity = new ActivityModel({
+    user: userId,
+    workspaceId: workspace._id,
+    message: `\"${user.name}\" created the workspace \"${workspace.name}\"`,
+  });
+  await activity.save();
+
   return {
     workspace,
   };
@@ -126,10 +135,12 @@ export const changeMemberRoleService = async ({
   workspaceId,
   memberId,
   roleId,
+  userId,
 }: {
   workspaceId: string;
   memberId: string;
   roleId: string;
+  userId: string;
 }) => {
   const workspace = await WorkspaceModel.findById(workspaceId);
   if (!workspace) throw new NotFoundException("Workspace not found!");
@@ -142,9 +153,20 @@ export const changeMemberRoleService = async ({
   });
   if (!member) throw new NotFoundException("Member not found in the workspace");
 
-  member.role = role;
+  const updatingUser = await UserModel.findById(userId).select("name");
 
+  member.role = role;
   await member.save();
+
+  // Create an activity log for changing a member's role
+  const activity = new ActivityModel({
+    user: userId,
+    workspaceId,
+    message: `\"${updatingUser?.name}\" changed the role of \"${
+      (member.userId as any).name
+    }\" to \"${role.name}\"`,
+  });
+  await activity.save();
 
   return {
     member,
@@ -154,17 +176,29 @@ export const updateWorkspaceByIdService = async ({
   workspaceId,
   name,
   description,
+  userId,
 }: {
   workspaceId: string;
   name: string | undefined;
   description: string | undefined;
+  userId: string;
 }) => {
   const workspace = await WorkspaceModel.findById(workspaceId);
   if (!workspace) throw new NotFoundException("Workspace not found!");
 
+  const updatingUser = await UserModel.findById(userId).select("name");
+
   workspace.name = name || workspace.name;
   workspace.description = description || workspace.description;
   await workspace.save();
+
+  // Create an activity log for updating the workspace
+  const activity = new ActivityModel({
+    user: userId,
+    workspaceId,
+    message: `\"${updatingUser?.name}\" updated the workspace details.`,
+  });
+  await activity.save();
 
   return {
     workspace,

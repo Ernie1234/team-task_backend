@@ -1,6 +1,8 @@
 import { TaskStatusEnum } from "@/enums/task-enum";
+import ActivityModel from "@/models/activity-model";
 import ProjectModel, { type ProjectDocument } from "@/models/project-model";
 import TaskModel from "@/models/task-model";
+import UserModel from "@/models/user-model";
 import { NotFoundException } from "@/utils/appError";
 import type {
   TCreateProjectInput,
@@ -18,6 +20,16 @@ export const createProjectService = async (
   });
 
   await project.save();
+
+  const user = await UserModel.findById(body.createdBy).select("name");
+
+  // Create an activity log for creating a project
+  const activity = new ActivityModel({
+    user: body.createdBy,
+    workspaceId: body.workspace,
+    message: `\"${user?.name}\" created the project \"${project.name}\"`,
+  });
+  await activity.save();
 
   return { project };
 };
@@ -121,12 +133,12 @@ export const getProjectAnalyticsWorkspaceService = async ({
   return { analytics };
 };
 export const updateProjectService = async (
-  body: TUpdateProjectInput,
+  validatedData: TUpdateProjectInput,
   projectId: string
 ): Promise<{ project: ProjectDocument }> => {
   const project = await ProjectModel.findOne({
     _id: projectId,
-    workspace: body.workspace,
+    workspace: validatedData.workspace,
   });
 
   if (!project)
@@ -134,11 +146,24 @@ export const updateProjectService = async (
       "Project not found or does not belong to the specified workspace"
     );
 
-  if (body.emoji) project.emoji = body.emoji;
-  if (body.name) project.name = body.name;
-  if (body.description) project.description = body.description;
+  if (validatedData.emoji) project.emoji = validatedData.emoji;
+  if (validatedData.name) project.name = validatedData.name;
+  if (validatedData.description)
+    project.description = validatedData.description;
 
   await project.save();
+
+  const updatingUser = await UserModel.findById(validatedData.createdBy).select(
+    "name"
+  );
+
+  // Create an activity log for updating a project
+  const activity = new ActivityModel({
+    user: validatedData.createdBy,
+    workspaceId: validatedData.workspace,
+    message: `\"${updatingUser?.name}\" updated the project \"${project.name}\"`,
+  });
+  await activity.save();
 
   return { project };
 };
@@ -146,9 +171,11 @@ export const updateProjectService = async (
 export const deleteProjectService = async ({
   projectId,
   workspaceId,
+  userId,
 }: {
   workspaceId: string;
   projectId: string;
+  userId: string;
 }): Promise<{ project: ProjectDocument }> => {
   const project = await ProjectModel.findOne({
     _id: projectId,
@@ -159,10 +186,20 @@ export const deleteProjectService = async ({
       "Project not found or does not belong to the specified workspace"
     );
 
+  const deletingUser = await UserModel.findById(userId).select("name");
+
   await TaskModel.deleteMany({
     project: project._id,
   });
   await project.deleteOne();
+
+  // Create an activity log for deleting a project
+  const activity = new ActivityModel({
+    user: userId,
+    workspaceId,
+    message: `\"${deletingUser?.name}\" deleted the project \"${project.name}\"`,
+  });
+  await activity.save();
 
   return { project };
 };

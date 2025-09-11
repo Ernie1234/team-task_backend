@@ -154,7 +154,11 @@ export const deleteProjectByIdInWorkspaceController = asyncHandler(
     const { role } = await getMemberRoleInWorkspace(userId, workspaceId);
     roleGuard(role, [Permissions.DELETE_PROJECT]);
 
-    const { project } = await deleteProjectService({ workspaceId, projectId });
+    const { project } = await deleteProjectService({
+      workspaceId,
+      projectId,
+      userId,
+    });
 
     return res.status(HTTPSTATUS.CREATED).json({
       status: true,

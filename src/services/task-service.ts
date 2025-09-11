@@ -158,6 +158,17 @@ export const updateTaskService = async (
     throw new NotFoundException("Task not found after update attempt.");
   }
 
+  const notificationMessage = `\"${updateFields.title}\" has been updated.`;
+
+  // Create activity log
+  const activityData = {
+    user: updatedTask._id,
+    message: notificationMessage,
+    workspaceId: updatedTask.workspace,
+  };
+
+  await ActivityModel.create(activityData);
+
   return { task: updatedTask };
 };
 
@@ -275,21 +286,21 @@ export const getATaskService = async ({
 
 /**
  * Deletes a task from the database.
- * @param data - The validated task data including task, project, and workspace IDs.
+ * @param data - The validated task data including user, workspace, and project IDs.
  * @returns An object containing the deleted task document.
  */
 export const deleteTaskService = async ({
   workspaceId,
   projectId,
   taskId,
+  userId,
 }: {
   workspaceId: string;
   projectId: string;
   taskId: string | undefined;
+  userId: string;
 }) => {
-  const isTaskAvailable = await TaskModel.findById({ _id: taskId });
-  if (!isTaskAvailable) throw new NotFoundException("Task not found!");
-
+  // Use a single query to find and delete the task, ensuring it belongs to the correct project and workspace.
   const deletedTask = await TaskModel.findOneAndDelete({
     _id: taskId,
     workspace: workspaceId,
@@ -302,5 +313,20 @@ export const deleteTaskService = async ({
     );
   }
 
+  // Find the user who is deleting the task to get their name.
+  const deletingUser = await UserModel.findById(userId).select("name");
+
+  const notificationMessage = `\"${deletedTask.title}\" has been deleted by \"${deletingUser?.name}\"`;
+
+  // Create activity log
+  const activityData = {
+    user: userId,
+    message: notificationMessage,
+    workspaceId: deletedTask.workspace,
+  };
+
+  await ActivityModel.create(activityData);
+
+  // Return the deleted task document
   return { task: deletedTask };
 };

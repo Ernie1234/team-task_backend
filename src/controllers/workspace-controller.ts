@@ -114,6 +114,7 @@ export const changeWorkspaceMemberRoleController = asyncHandler(
       workspaceId,
       memberId,
       roleId,
+      userId,
     });
 
     return res.status(HTTPSTATUS.OK).json({
@@ -136,6 +137,7 @@ export const updateWorkspaceByIdController = asyncHandler(
       workspaceId,
       name,
       description,
+      userId,
     });
 
     return res.status(HTTPSTATUS.OK).json({
