@@ -10,9 +10,11 @@ import {
   getWorkspaceAnalyticsService,
   getWorkspaceByIdService,
   getWorkspaceMembersService,
+  inviteMemberByEmailService,
   updateWorkspaceByIdService,
 } from "@/services/workspace-service";
 import { roleGuard } from "@/utils/roleGuard";
+import { inviteMemberSchema } from "@/validation/invite-code-validation";
 import {
   changeRoleSchema,
   createWorkspaceSchema,
@@ -160,6 +162,28 @@ export const deleteWorkspaceByIdController = asyncHandler(
       status: true,
       message: "Workspace deleted successfully!",
       currentWorkspace,
+    });
+  }
+);
+
+export const inviteMemberByEmailController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user?._id;
+    const workspaceId = workspaceIdSchema.parse(req.params.id);
+    const { email: emailToInvite } = inviteMemberSchema.parse(req.body);
+
+    const { role } = await getMemberRoleInWorkspace(userId, workspaceId);
+    roleGuard(role, [Permissions.MANAGE_WORKSPACE_SETTINGS]);
+
+    const { status, message } = await inviteMemberByEmailService({
+      inviterId: userId,
+      workspaceId,
+      emailToInvite,
+    });
+
+    return res.status(HTTPSTATUS.OK).json({
+      status,
+      message,
     });
   }
 );

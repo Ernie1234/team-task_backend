@@ -28,7 +28,7 @@ const activitySchema = new Schema<ActivityDocument>(
     },
     targetId: {
       type: Schema.Types.ObjectId,
-      required: true,
+      required: false,
     },
     workspaceId: {
       type: Schema.Types.ObjectId,

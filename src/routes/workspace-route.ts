@@ -8,6 +8,7 @@ import {
   getWorkspaceAnalyticsController,
   getWorkspaceByIdController,
   getWorkspaceMembersController,
+  inviteMemberByEmailController,
   updateWorkspaceByIdController,
 } from "@/controllers/workspace-controller";
 
@@ -21,5 +22,6 @@ router.get("/analytics/:id", getWorkspaceAnalyticsController);
 router.put("/change/member/role/:id", changeWorkspaceMemberRoleController);
 router.put("/update/:id", updateWorkspaceByIdController);
 router.delete("/delete/:id", deleteWorkspaceByIdController);
+router.post("/invite/member/:id", inviteMemberByEmailController);
 
 export default router;

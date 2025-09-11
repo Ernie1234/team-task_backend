@@ -12,6 +12,10 @@ import ProjectModel from "@/models/project-model";
 import Logger from "@/utils/logger";
 import NotificationModel from "@/models/notification-model";
 import ActivityModel from "@/models/activity-model";
+import { sendWorkspaceInvitationEmail } from "@/mails/emails";
+import { config } from "@/config/app.config";
+
+const baseUrl = config.FRONTEND_ORIGIN;
 
 export const createWorkspaceService = async (
   userId: string,
@@ -219,4 +223,63 @@ export const deleteWorkspaceByIdService = async ({
     Logger.error("An error occurred here: ", error);
     throw error;
   }
+};
+export const inviteMemberByEmailService = async ({
+  inviterId,
+  workspaceId,
+  emailToInvite,
+}: {
+  inviterId: string;
+  workspaceId: string;
+  emailToInvite: string;
+}) => {
+  const workspace = await WorkspaceModel.findById(workspaceId);
+  if (!workspace) throw new NotFoundException("Workspace not found!");
+  const inviter = await UserModel.findById(inviterId);
+  if (!inviter) throw new NotFoundException("Inviter not found!");
+
+  // Check if a user with that email already exists and is a member.
+  const invitedUser = await UserModel.findOne({ email: emailToInvite });
+  if (invitedUser) {
+    const isMember = await MemberModel.findOne({
+      userId: invitedUser._id,
+      workspaceId,
+    });
+    if (isMember) {
+      throw new BadRequestException("User is already a member!");
+    }
+  }
+
+  const inviteURL = `${baseUrl}/invite/workspace/${workspace.inviteCode}/join`;
+
+  await sendWorkspaceInvitationEmail(
+    emailToInvite,
+    inviter.name,
+    workspace.name,
+    inviteURL
+  );
+
+  // Get all members of the workspace to send notifications to everyone
+  const membersInWorkspace = await MemberModel.find({ workspaceId });
+  const notificationPromises = membersInWorkspace.map((member) => {
+    return NotificationModel.create({
+      sender: inviterId,
+      recipient: member.userId,
+      workspaceId,
+      message: `An invitation has been sent by ${inviter.name} to ${emailToInvite} to join the workspace.`,
+      link: `/workspaces/${workspaceId}`,
+    });
+  });
+  await Promise.all(notificationPromises);
+
+  const activity = new ActivityModel({
+    user: inviterId,
+    workspaceId,
+    action: `An invitation has been sent by ${inviter.name} to ${emailToInvite} to join the workspace.`,
+    targetType: "Workspace",
+    details: emailToInvite,
+  });
+  await activity.save();
+
+  return { status: true, message: "Invitation sent successfully!" };
 };

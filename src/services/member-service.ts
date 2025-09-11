@@ -1,7 +1,10 @@
 import { ErrorCodeEnum } from "@/enums/errorCode.enum";
 import { Roles } from "@/enums/role-enum";
+import ActivityModel from "@/models/activity-model";
 import MemberModel from "@/models/member-model";
+import NotificationModel from "@/models/notification-model";
 import RoleModel from "@/models/role-model";
+import UserModel from "@/models/user-model";
 import WorkspaceModel from "@/models/workspace-model";
 import {
   BadRequestException,
@@ -57,6 +60,43 @@ export const joinWorkspaceByInvite = async (
     role: role._id,
   });
   await newMember.save();
+
+  const user = await UserModel.findById(userId);
+
+  // Notify all existing members of the new join
+  const membersInWorkspace = await MemberModel.find({
+    workspaceId: workspace._id,
+  });
+  const joinNotificationPromises = membersInWorkspace.map((member) => {
+    return NotificationModel.create({
+      sender: userId,
+      recipient: member.userId,
+      workspaceId: workspace._id,
+      message: `${user?.name || "A new user"} has joined the workspace!`,
+      link: `/workspaces/${workspace._id}`,
+    });
+  });
+
+  // Create welcome notification for the new member
+  joinNotificationPromises.push(
+    NotificationModel.create({
+      sender: userId,
+      recipient: userId,
+      workspaceId: workspace._id,
+      message: `Welcome to the ${workspace.name} workspace!`,
+      link: `/workspaces/${workspace._id}`,
+    })
+  );
+  await Promise.all(joinNotificationPromises);
+
+  // Create an activity log for the new join
+  const activity = new ActivityModel({
+    user: userId,
+    workspaceId: workspace._id,
+    action: "has joined the workspace",
+    targetType: "Workspace",
+  });
+  await activity.save();
 
   return { workspaceId: workspace._id, role: role.name };
 };
