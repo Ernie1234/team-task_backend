@@ -15,16 +15,34 @@ export const getAllWorkspaceRecentActivitiesController = asyncHandler(
 
     const workspaceId = workspaceIdSchema.parse(req.params.workspaceId);
 
-    const recentActivities = await ActivityModel.find({
-      workspaceId,
-    })
-      .sort({ createdAt: -1 })
-      .populate("user", "name email profilePicture -password");
+    // Get pagination parameters from query, with defaults
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+
+    const [recentActivities, totalActivities] = await Promise.all([
+      ActivityModel.find({
+        workspaceId,
+      })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("user", "name email profilePicture -password"),
+      ActivityModel.countDocuments({ workspaceId }),
+    ]);
+
+    const totalPages = Math.ceil(totalActivities / limit);
 
     return res.status(HTTPSTATUS.OK).json({
       status: true,
       message: "Fetched Successfully",
       data: recentActivities,
+      pagination: {
+        page,
+        limit,
+        totalPages,
+        totalActivities,
+      },
     });
   }
 );
