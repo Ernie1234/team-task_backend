@@ -275,9 +275,7 @@ export const inviteMemberByEmailService = async ({
   const activity = new ActivityModel({
     user: inviterId,
     workspaceId,
-    action: `An invitation has been sent by ${inviter.name} to ${emailToInvite} to join the workspace.`,
-    targetType: "Workspace",
-    details: emailToInvite,
+    message: `An invitation has been sent by \"${inviter.name}\" to \"${emailToInvite}\" to join the workspace.`,
   });
   await activity.save();
 

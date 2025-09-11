@@ -77,7 +77,6 @@ export const joinWorkspaceByInvite = async (
     });
   });
 
-  // Create welcome notification for the new member
   joinNotificationPromises.push(
     NotificationModel.create({
       sender: userId,
@@ -89,12 +88,10 @@ export const joinWorkspaceByInvite = async (
   );
   await Promise.all(joinNotificationPromises);
 
-  // Create an activity log for the new join
   const activity = new ActivityModel({
     user: userId,
     workspaceId: workspace._id,
-    action: "has joined the workspace",
-    targetType: "Workspace",
+    message: `\"${user?.name || "A new user"}\" has joined the workspace!`,
   });
   await activity.save();
 

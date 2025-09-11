@@ -77,3 +77,26 @@ export const markNotificationsAsReadController = asyncHandler(
     });
   }
 );
+export const getAllWorkspaceNotificationsController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user?._id;
+    if (!userId) {
+      throw new BadRequestException("User ID is missing from the request.");
+    }
+
+    const workspaceId = workspaceIdSchema.parse(req.params.workspaceId);
+
+    const notifications = await NotificationModel.find({
+      recipient: userId,
+      link: { $regex: workspaceId },
+    })
+      .sort({ createdAt: -1 })
+      .populate("sender", "name email -password");
+
+    return res.status(HTTPSTATUS.OK).json({
+      status: true,
+      message: "Fetched Successfully",
+      data: notifications,
+    });
+  }
+);

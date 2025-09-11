@@ -67,10 +67,12 @@ export const createTaskService = async (
 
     const savedTask = await newTask.save();
 
+    let notificationMessage = "";
+
     if (data.assignedTo) {
       const creator = await UserModel.findById(data.createdBy).select("name");
       const creatorName = creator?.name || "Someone";
-      const notificationMessage = `\"${creatorName}\" assigned you a new task: \"${data.title}\".`;
+      notificationMessage = `\"${creatorName}\" assigned you a new task: \"${data.title}\".`;
 
       const notificationData = {
         recipient: data.assignedTo,
@@ -86,9 +88,7 @@ export const createTaskService = async (
     // Create activity log
     const activityData = {
       user: data.createdBy,
-      action: "created",
-      targetType: "Task",
-      targetId: savedTask._id,
+      message: notificationMessage,
       workspaceId: data.workspace,
     };
 
