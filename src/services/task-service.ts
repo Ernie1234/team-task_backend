@@ -117,7 +117,7 @@ type UpdateTaskData = z.infer<typeof updateTaskBodySchema> &
 export const updateTaskService = async (
   data: UpdateTaskData
 ): Promise<{ task: TaskDocument }> => {
-  const { taskId, workspaceId, projectId, ...updateFields } = data;
+  const { taskId, workspaceId, projectId, userId, ...updateFields } = data;
 
   const task = await TaskModel.findOne({
     _id: taskId,
@@ -162,7 +162,7 @@ export const updateTaskService = async (
 
   // Create activity log
   const activityData = {
-    user: updatedTask._id,
+    user: userId,
     message: notificationMessage,
     workspaceId: updatedTask.workspace,
   };
