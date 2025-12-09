@@ -168,6 +168,8 @@ export const verifyUserService = async ({
   if (!account) {
     throw new NotFoundException("Invalid email or password");
   }
+  Logger.info("Account found: ", account);
+  Logger.info("Fetching user for the account: ", account.userId);
   const user = await UserModel.findById(account.userId);
   Logger.info("User found from account: ", user);
   if (!user) {

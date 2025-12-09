@@ -9,6 +9,7 @@ import projectsRoute from "./project-route";
 import taskRoute from "./task-route";
 import notificationRoute from "./notification-route";
 import activitiesRoute from "./activities-route";
+import chatRoute from "./chat-route";
 
 const apiRouter: Router = Router();
 
@@ -20,5 +21,6 @@ apiRouter.use("/projects", isAuthenticated, projectsRoute);
 apiRouter.use("/tasks", isAuthenticated, taskRoute);
 apiRouter.use("/notifications", isAuthenticated, notificationRoute);
 apiRouter.use("/activities", isAuthenticated, activitiesRoute);
+apiRouter.use("/chat", chatRoute);
 
 export default apiRouter;

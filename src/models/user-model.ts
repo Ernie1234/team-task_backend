@@ -11,6 +11,8 @@ export interface UserDocument extends Document {
   createdAt: Date;
   updatedAt: Date;
   currentWorkspace: mongoose.Types.ObjectId | null;
+  isOnline: boolean;
+  lastSeen: Date | null;
   comparePassword(value: string): Promise<boolean>;
   omitPassword(): Omit<UserDocument, "password">;
   isVerified: boolean;
@@ -51,6 +53,8 @@ const userSchema = new Schema<UserDocument>(
     },
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date, default: null },
+    isOnline: { type: Boolean, default: false },
+    lastSeen: { type: Date, default: null },
   },
   {
     timestamps: true,
