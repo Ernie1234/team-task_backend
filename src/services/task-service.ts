@@ -3,16 +3,61 @@ import type { ActivityDocument } from "@/models/activity-model";
 import ActivityModel from "@/models/activity-model";
 import MemberModel from "@/models/member-model";
 import type { NotificationDocument } from "@/models/notification-model";
-import NotificationModel from "@/models/notification-model";
+import NotificationModel, { NotificationTypeEnum } from "@/models/notification-model";
+import { notifyUsers } from "@/services/notification-service";
 import ProjectModel from "@/models/project-model";
 import type { TaskDocument } from "@/models/task-model";
 import TaskModel from "@/models/task-model";
 import UserModel from "@/models/user-model";
 import {
+  AppError,
   BadRequestException,
   InternalServerException,
   NotFoundException,
 } from "@/utils/appError";
+import { getSocketService } from "@/config/socket.config";
+import mongoose from "mongoose";
+
+// Let everyone viewing the workspace refresh their task views
+const emitTaskChanged = (
+  workspaceId: string | mongoose.Types.ObjectId,
+  payload: { action: "created" | "updated" | "deleted"; taskId: string; projectId: string; parentTask?: string | null }
+) => {
+  getSocketService()?.emitToRooms([`presence:${workspaceId}`], "task:changed", {
+    workspaceId: String(workspaceId),
+    ...payload,
+  });
+};
+
+const TASK_POPULATE = [
+  { path: "assignedTo", select: "name email profilePicture" },
+  { path: "project", select: "name emoji" },
+];
+
+const PRIORITY_RANK: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Adds subtaskCount / subtaskDoneCount to each task (one query for all). */
+const withSubtaskCounts = async <T extends { _id: unknown }>(tasks: T[]) => {
+  if (tasks.length === 0) return tasks.map((t) => ({ ...t, subtaskCount: 0, subtaskDoneCount: 0 }));
+  const counts = await TaskModel.aggregate([
+    { $match: { parentTask: { $in: tasks.map((t) => t._id) } } },
+    {
+      $group: {
+        _id: "$parentTask",
+        total: { $sum: 1 },
+        done: { $sum: { $cond: [{ $eq: ["$status", TaskStatusEnum.DONE] }, 1, 0] } },
+      },
+    },
+  ]);
+  const byParent = new Map(counts.map((c) => [String(c._id), c]));
+  return tasks.map((t) => ({
+    ...t,
+    subtaskCount: byParent.get(String(t._id))?.total ?? 0,
+    subtaskDoneCount: byParent.get(String(t._id))?.done ?? 0,
+  }));
+};
 import type {
   createTaskBodySchema,
   GetAllTasksQueryParams,
@@ -43,6 +88,19 @@ export const createTaskService = async (
         "Project not found or does not belong to this workspace"
       );
 
+    // Subtasks live in the same project as their parent, one level deep
+    let parentTitle: string | null = null;
+    if (data.parentTask) {
+      const parent = await TaskModel.findOne({
+        _id: data.parentTask,
+        workspace: data.workspace,
+        project: data.project,
+      }).select("title parentTask");
+      if (!parent) throw new BadRequestException("Parent task not found in this project");
+      if (parent.parentTask) throw new BadRequestException("Subtasks can't have their own subtasks");
+      parentTitle = parent.title;
+    }
+
     if (data.assignedTo) {
       const isAssigneduserMember = await MemberModel.exists({
         userId: data.assignedTo,
@@ -63,42 +121,63 @@ export const createTaskService = async (
       workspace: data.workspace,
       project: data.project,
       createdBy: data.createdBy,
+      parentTask: data.parentTask ?? null,
+      completedAt: data.status === TaskStatusEnum.DONE ? new Date() : null,
     });
 
     const savedTask = await newTask.save();
 
-    let notificationMessage = "";
+    const creator = await UserModel.findById(data.createdBy).select("name");
+    const creatorName = creator?.name || "Someone";
+    let notificationMessage = `\"${creatorName}\" created the task \"${data.title}\".`;
 
     if (data.assignedTo) {
-      const creator = await UserModel.findById(data.createdBy).select("name");
-      const creatorName = creator?.name || "Someone";
       notificationMessage = `\"${creatorName}\" assigned you a new task: \"${data.title}\".`;
 
-      const notificationData = {
-        recipient: data.assignedTo,
-        sender: data.createdBy,
-        message: notificationMessage,
-        link: `/workspaces/${savedTask.workspace.toString()}/projects/${savedTask.project.toString()}/tasks/${savedTask._id.toString()}`,
-        isRead: false,
-      };
-
-      await NotificationModel.create(notificationData);
+      // No need to notify people about tasks they assign to themselves
+      if (String(data.assignedTo) !== String(data.createdBy)) {
+        await notifyUsers([
+          {
+            recipient: data.assignedTo,
+            sender: data.createdBy,
+            workspaceId: savedTask.workspace,
+            type: NotificationTypeEnum.TASK_ASSIGNED,
+            message: notificationMessage,
+            link: `/workspace/${savedTask.workspace.toString()}/project/${savedTask.project.toString()}`,
+          },
+        ]);
+      }
     }
 
     // Create activity log
+    let activityMessage = parentTitle
+      ? `\"${creatorName}\" added the subtask \"${data.title}\" to \"${parentTitle}\"`
+      : `\"${creatorName}\" created the task \"${data.title}\"`;
+    if (data.assignedTo && String(data.assignedTo) !== String(data.createdBy)) {
+      const assignee = await UserModel.findById(data.assignedTo).select("name");
+      if (assignee?.name) activityMessage += ` and assigned it to \"${assignee.name}\"`;
+    }
+
     const activityData = {
       user: data.createdBy,
-      message: notificationMessage,
+      message: activityMessage,
       workspaceId: data.workspace,
     };
 
     await ActivityModel.create(activityData);
 
+    emitTaskChanged(data.workspace, {
+      action: "created",
+      taskId: String(savedTask._id),
+      projectId: String(data.project),
+      parentTask: data.parentTask ?? null,
+    });
+
     // Return the newly created and saved task document
     return { task: savedTask };
   } catch (error) {
-    // Catch any Mongoose or other unexpected errors and throw a custom exception
-    // to be handled by the global error handler.
+    // Expected problems (bad parent, assignee not a member...) keep their message
+    if (error instanceof AppError) throw error;
     console.error("Error creating task in service:", error);
     throw new InternalServerException("Failed to create task.");
   }
@@ -144,13 +223,19 @@ export const updateTaskService = async (
     }
   }
 
+  // Track when work was finished (for the dashboard's completion trend)
+  const statusFields: Record<string, unknown> = {};
+  if (updateFields.status && updateFields.status !== task.status) {
+    statusFields.completedAt = updateFields.status === TaskStatusEnum.DONE ? new Date() : null;
+  }
+
   const updatedTask = await TaskModel.findOneAndUpdate(
     {
       _id: taskId,
       workspace: workspaceId,
       project: projectId,
     },
-    updateFields,
+    { ...updateFields, ...statusFields },
     { new: true, runValidators: true }
   );
 
@@ -158,7 +243,43 @@ export const updateTaskService = async (
     throw new NotFoundException("Task not found after update attempt.");
   }
 
-  const notificationMessage = `\"${updateFields.title}\" has been updated.`;
+  const updater = await UserModel.findById(userId).select("name");
+  const updaterName = updater?.name || "Someone";
+  const taskLink = `/workspace/${workspaceId}/project/${projectId}`;
+  const previousAssignee = task.assignedTo ? String(task.assignedTo) : null;
+  const currentAssignee = updatedTask.assignedTo ? String(updatedTask.assignedTo) : null;
+
+  if (currentAssignee && currentAssignee !== String(userId)) {
+    if (currentAssignee !== previousAssignee) {
+      // Newly (re)assigned
+      await notifyUsers([
+        {
+          recipient: currentAssignee,
+          sender: userId,
+          workspaceId,
+          type: NotificationTypeEnum.TASK_ASSIGNED,
+          message: `\"${updaterName}\" assigned you the task: \"${updatedTask.title}\".`,
+          link: taskLink,
+        },
+      ]);
+    } else if (task.status !== updatedTask.status) {
+      await notifyUsers([
+        {
+          recipient: currentAssignee,
+          sender: userId,
+          workspaceId,
+          type: NotificationTypeEnum.TASK_UPDATED,
+          message: `\"${updaterName}\" moved your task \"${updatedTask.title}\" to ${updatedTask.status.replace(/_/g, " ").toLowerCase()}.`,
+          link: taskLink,
+        },
+      ]);
+    }
+  }
+
+  const notificationMessage =
+    task.status !== updatedTask.status
+      ? `\"${updaterName}\" moved \"${updatedTask.title}\" to ${updatedTask.status.replace(/_/g, " ").toLowerCase()}`
+      : `\"${updaterName}\" updated the task \"${updatedTask.title}\"`;
 
   // Create activity log
   const activityData = {
@@ -169,6 +290,14 @@ export const updateTaskService = async (
 
   await ActivityModel.create(activityData);
 
+  emitTaskChanged(workspaceId, {
+    action: "updated",
+    taskId: String(updatedTask._id),
+    projectId: String(projectId),
+    parentTask: updatedTask.parentTask ? String(updatedTask.parentTask) : null,
+  });
+
+  await updatedTask.populate(TASK_POPULATE);
   return { task: updatedTask };
 };
 
@@ -190,17 +319,19 @@ interface GetAllTasksServiceData {
 export const getAllTasksService = async (
   data: GetAllTasksServiceData
 ): Promise<{
-  tasks: TaskDocument[];
+  tasks: Array<Record<string, unknown>>;
   totalCount: number;
-  notifications?: NotificationDocument[];
-  activities?: ActivityDocument[];
 }> => {
-  const { workspaceId, filters, pagination, userId } = data;
+  const { workspaceId, filters, pagination } = data;
   const { pageSize, pageNumber } = pagination;
 
-  const query: any = { workspace: workspaceId };
+  // Top-level tasks only, unless asking for one task's subtasks
+  const query: Record<string, unknown> = {
+    workspace: workspaceId,
+    parentTask: filters.parentTask ?? null,
+  };
 
-  if (filters.projectId) {
+  if (filters.projectId && filters.projectId !== "undefined") {
     query.project = filters.projectId;
   }
   if (filters.status) {
@@ -213,49 +344,41 @@ export const getAllTasksService = async (
     query.assignedTo = { $in: filters.assignedTo };
   }
   if (filters.dueDate) {
-    // You may want to add specific date range queries here
     query.dueDate = { $gte: new Date(filters.dueDate) };
   }
   if (filters.keyword) {
-    // Use a regex search for case-insensitive keyword matching on title and description
-    const regex = new RegExp(filters.keyword, "i");
-    query.$or = [{ title: regex }, { description: regex }];
+    // Escaped so characters like "(" or "*" are searched for literally
+    const regex = new RegExp(escapeRegex(filters.keyword.slice(0, 100)), "i");
+    query.$or = [{ title: regex }, { description: regex }, { taskCode: regex }];
   }
 
-  const tasks = await TaskModel.find(query)
-    .skip((pageNumber - 1) * pageSize)
-    .limit(pageSize)
-    .exec();
+  const direction = filters.sortOrder === "asc" ? 1 : -1;
+  const sortBy = filters.sortBy ?? "createdAt";
 
-  const totalCount = await TaskModel.countDocuments(query);
+  const [rawTasks, totalCount] = await Promise.all([
+    sortBy === "priority"
+      ? // priority is a string: sort by rank in memory after fetching the page window
+        TaskModel.find(query).populate(TASK_POPULATE).lean()
+      : TaskModel.find(query)
+          .sort({ [sortBy]: direction, _id: -1 })
+          .skip((pageNumber - 1) * pageSize)
+          .limit(pageSize)
+          .populate(TASK_POPULATE)
+          .lean(),
+    TaskModel.countDocuments(query),
+  ]);
 
-  const taskIds = tasks.map((task) => task._id);
-  // Get notifications for the current user related to these tasks
-  const notificationQuery: any = {
-    recipient: userId,
-    link: {
-      $in: tasks.map(
-        (task) =>
-          `/workspaces/${task.workspace.toString()}projects/${task.project.toString()}/tasks/${task._id.toString()}`
-      ),
-    },
-  };
+  let tasks = rawTasks;
+  if (sortBy === "priority") {
+    tasks = [...rawTasks]
+      .sort(
+        (a, b) =>
+          ((PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9)) * (direction === 1 ? -1 : 1)
+      )
+      .slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
+  }
 
-  const notifications = await NotificationModel.find(notificationQuery)
-    .populate("sender", "name email profilePicture -password")
-    .populate("recipient", "name email profilePicture -password")
-    .sort({ createdAt: -1 });
-
-  // Get activities related to this task
-  const activities = await ActivityModel.find({
-    targetType: "Task",
-    targetId: taskIds,
-    workspaceId: workspaceId,
-  })
-    .populate("user", "name email profilePicture -password")
-    .sort({ createdAt: -1 });
-
-  return { tasks, totalCount, notifications, activities };
+  return { tasks: await withSubtaskCounts(tasks), totalCount };
 };
 
 /**
@@ -272,16 +395,22 @@ export const getATaskService = async ({
   projectId: string;
   taskId: string | undefined;
 }) => {
-  const isTaskAvailable = await TaskModel.findById({ _id: taskId });
-  if (!isTaskAvailable) throw new NotFoundException("Task not found!");
+  const [task, subtasks] = await Promise.all([
+    TaskModel.findOne({ workspace: workspaceId, project: projectId, _id: taskId })
+      .populate([
+        ...TASK_POPULATE,
+        { path: "createdBy", select: "name profilePicture" },
+        { path: "parentTask", select: "title taskCode status" },
+      ])
+      .lean(),
+    TaskModel.find({ workspace: workspaceId, parentTask: taskId })
+      .sort({ createdAt: 1 })
+      .populate(TASK_POPULATE)
+      .lean(),
+  ]);
+  if (!task) throw new NotFoundException("Task not found!");
 
-  const task = await TaskModel.findOne({
-    workspace: workspaceId,
-    project: projectId,
-    _id: taskId,
-  });
-
-  return { task };
+  return { task, subtasks };
 };
 
 /**
@@ -313,10 +442,20 @@ export const deleteTaskService = async ({
     );
   }
 
+  // A task's subtasks are deleted with it
+  await TaskModel.deleteMany({ parentTask: deletedTask._id });
+
+  emitTaskChanged(workspaceId, {
+    action: "deleted",
+    taskId: String(deletedTask._id),
+    projectId: String(projectId),
+    parentTask: deletedTask.parentTask ? String(deletedTask.parentTask) : null,
+  });
+
   // Find the user who is deleting the task to get their name.
   const deletingUser = await UserModel.findById(userId).select("name");
 
-  const notificationMessage = `\"${deletedTask.title}\" has been deleted by \"${deletingUser?.name}\"`;
+  const notificationMessage = `\"${deletingUser?.name ?? "Someone"}\" deleted the task \"${deletedTask.title}\"`;
 
   // Create activity log
   const activityData = {

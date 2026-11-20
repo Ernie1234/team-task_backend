@@ -5,6 +5,7 @@ import { BadRequestException } from "@/utils/appError";
 import { workspaceIdSchema } from "@/validation/workspace-validation";
 import ActivityModel from "@/models/activity-model";
 import { HTTPSTATUS } from "@/config/http.config";
+import { getMemberRoleInWorkspace } from "@/services/member-service";
 
 export const getAllWorkspaceRecentActivitiesController = asyncHandler(
   async (req: Request, res: Response) => {
@@ -14,20 +15,20 @@ export const getAllWorkspaceRecentActivitiesController = asyncHandler(
     }
 
     const workspaceId = workspaceIdSchema.parse(req.params.workspaceId);
+    // Only members can read a workspace's activity
+    await getMemberRoleInWorkspace(String(userId), workspaceId);
 
-    // Get pagination parameters from query, with defaults
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    // Pagination, with sane bounds
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 10));
     const skip = (page - 1) * limit;
 
     const [recentActivities, totalActivities] = await Promise.all([
-      ActivityModel.find({
-        workspaceId,
-      })
+      ActivityModel.find({ workspaceId })
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate("user", "name email profilePicture -password"),
+        .populate("user", "name email profilePicture"),
       ActivityModel.countDocuments({ workspaceId }),
     ]);
 
@@ -42,6 +43,7 @@ export const getAllWorkspaceRecentActivitiesController = asyncHandler(
         limit,
         totalPages,
         totalActivities,
+        hasMore: page < totalPages,
       },
     });
   }

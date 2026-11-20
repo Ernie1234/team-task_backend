@@ -1,6 +1,6 @@
 import { config } from "@/config/app.config";
 import Logger from "@/utils/logger";
-import { mailtrapClient, sender } from "./mailtrap";
+import { isMailEnabled, mailtrapClient, sender } from "./mailtrap";
 import {
   passwordResetRequestTemplate,
   passwordResetSuccessTemplate,
@@ -21,6 +21,12 @@ export const sendVerificationEmail = async (
 ) => {
   const recipient: Recipient[] = [{ email }];
   const verificationLink = `${baseUrl}/verify-email?email=${email}&token=${verificationToken}`;
+  if (!isMailEnabled) {
+    Logger.warn(
+      `[mail disabled] Verification for ${email} — code: ${verificationToken} — link: ${verificationLink}`
+    );
+    return;
+  }
   try {
     const response = await mailtrapClient.send({
       from: sender,
@@ -46,6 +52,10 @@ export const sendWelcomeEmail = async (
   name: string
 ): Promise<void> => {
   const recipient: Recipient[] = [{ email }];
+  if (!isMailEnabled || !config.MAILTRAP_TEMPLATE_UUID) {
+    Logger.warn(`[mail disabled] Skipping welcome email to ${email}`);
+    return;
+  }
 
   try {
     const response = await mailtrapClient.send({
@@ -70,6 +80,10 @@ export const sendPasswordResetEmail = async (
   resetURL: string
 ): Promise<void> => {
   const recipient: Recipient[] = [{ email }];
+  if (!isMailEnabled) {
+    Logger.warn(`[mail disabled] Password reset for ${email} — link: ${resetURL}`);
+    return;
+  }
 
   try {
     const response = await mailtrapClient.send({
@@ -92,6 +106,10 @@ export const sendPasswordResetEmail = async (
 // Function to send a password reset success email
 export const sendResetSuccessEmail = async (email: string): Promise<void> => {
   const recipient: Recipient[] = [{ email }];
+  if (!isMailEnabled) {
+    Logger.warn(`[mail disabled] Skipping password reset success email to ${email}`);
+    return;
+  }
 
   try {
     const response = await mailtrapClient.send({
@@ -118,6 +136,10 @@ export const sendWorkspaceInvitationEmail = async (
   inviteURL: string
 ): Promise<void> => {
   const recipient: Recipient[] = [{ email }];
+  if (!isMailEnabled) {
+    Logger.warn(`[mail disabled] Workspace invite for ${email} to "${workspaceName}" — link: ${inviteURL}`);
+    return;
+  }
 
   try {
     const response = await mailtrapClient.send({

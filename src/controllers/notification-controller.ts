@@ -3,100 +3,78 @@ import { asyncHandler } from "@/middlewares/asyncHandlerMiddleware";
 import { BadRequestException } from "@/utils/appError";
 import { workspaceIdSchema } from "@/validation/workspace-validation";
 import type { Request, Response } from "express";
-import NotificationModel from "@/models/notification-model";
-import { Types } from "mongoose";
 import { notificationIdsSchema } from "@/validation/notification-validation";
+import { getMemberRoleInWorkspace } from "@/services/member-service";
+import {
+  getWorkspaceNotificationsService,
+  markAllNotificationsAsReadService,
+  markNotificationsAsReadService,
+} from "@/services/notification-service";
 
-export const markAllNotificationsAsReadController = asyncHandler(
+const requireUserId = (req: Request): string => {
+  const userId = req.user?._id;
+  if (!userId) {
+    throw new BadRequestException("User ID is missing from the request.");
+  }
+  return String(userId);
+};
+
+export const getAllWorkspaceNotificationsController = asyncHandler(
   async (req: Request, res: Response) => {
-    const userId = req.user?._id;
-    if (!userId) {
-      throw new BadRequestException("User ID is missing from the request.");
-    }
-
+    const userId = requireUserId(req);
     const workspaceId = workspaceIdSchema.parse(req.params.workspaceId);
+    await getMemberRoleInWorkspace(userId, workspaceId);
 
-    const result = await NotificationModel.updateMany(
-      {
-        recipient: new Types.ObjectId(userId),
-        workspaceId: new Types.ObjectId(workspaceId),
-        isRead: false,
-      },
-      {
-        $set: { isRead: true },
-      }
+    const { notifications, unreadCount } = await getWorkspaceNotificationsService(
+      userId,
+      workspaceId
     );
-
-    if (result.modifiedCount === 0) {
-      return res.status(HTTPSTATUS.OK).json({
-        status: true,
-        message: "No unread notifications found.",
-        data: {
-          modifiedCount: 0,
-        },
-      });
-    }
 
     return res.status(HTTPSTATUS.OK).json({
       status: true,
-      message: `Successfully marked ${result.modifiedCount} notifications as read.`,
-      data: {
-        modifiedCount: result.modifiedCount,
-      },
+      message: "Fetched Successfully",
+      data: notifications,
+      unreadCount,
     });
   }
 );
 
 export const markNotificationsAsReadController = asyncHandler(
   async (req: Request, res: Response) => {
-    const userId = req.user?._id;
-    if (!userId) {
-      throw new BadRequestException("User ID is missing from the request.");
-    }
+    const userId = requireUserId(req);
+    const notificationIds = notificationIdsSchema.parse(req.body.notificationIds);
 
-    const { notificationIds } = req.body;
-    const parsedIds = notificationIdsSchema.parse(notificationIds);
-
-    const result = await NotificationModel.updateMany(
-      {
-        _id: { $in: parsedIds.map((id: string) => new Types.ObjectId(id)) },
-        recipient: new Types.ObjectId(userId),
-        isRead: false,
-      },
-      {
-        $set: { isRead: true },
-      }
+    const { modifiedCount } = await markNotificationsAsReadService(
+      userId,
+      notificationIds
     );
 
     return res.status(HTTPSTATUS.OK).json({
       status: true,
-      message: `Successfully marked ${result.modifiedCount} notifications as read.`,
-      data: {
-        modifiedCount: result.modifiedCount,
-      },
+      message: `Successfully marked ${modifiedCount} notifications as read.`,
+      data: { modifiedCount },
     });
   }
 );
-export const getAllWorkspaceNotificationsController = asyncHandler(
+
+export const markAllNotificationsAsReadController = asyncHandler(
   async (req: Request, res: Response) => {
-    const userId = req.user?._id;
-    if (!userId) {
-      throw new BadRequestException("User ID is missing from the request.");
-    }
-
+    const userId = requireUserId(req);
     const workspaceId = workspaceIdSchema.parse(req.params.workspaceId);
+    await getMemberRoleInWorkspace(userId, workspaceId);
 
-    const notifications = await NotificationModel.find({
-      recipient: userId,
-      link: { $regex: workspaceId },
-    })
-      .sort({ createdAt: -1 })
-      .populate("sender", "name email -password");
+    const { modifiedCount } = await markAllNotificationsAsReadService(
+      userId,
+      workspaceId
+    );
 
     return res.status(HTTPSTATUS.OK).json({
       status: true,
-      message: "Fetched Successfully",
-      data: notifications,
+      message:
+        modifiedCount === 0
+          ? "No unread notifications found."
+          : `Successfully marked ${modifiedCount} notifications as read.`,
+      data: { modifiedCount },
     });
   }
 );

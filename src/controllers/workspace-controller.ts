@@ -9,6 +9,7 @@ import {
   getUserWorkspacesIsMemberService,
   getWorkspaceAnalyticsService,
   getWorkspaceByIdService,
+  getWorkspaceDashboardService,
   getWorkspaceMembersService,
   inviteMemberByEmailService,
   updateWorkspaceByIdService,
@@ -98,6 +99,23 @@ export const getWorkspaceAnalyticsController = asyncHandler(
       status: true,
       message: "Workspace Analytics retrieved successfully!",
       analytics,
+    });
+  }
+);
+export const getWorkspaceDashboardController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user?._id;
+    const workspaceId = workspaceIdSchema.parse(req.params.id);
+
+    const { role } = await getMemberRoleInWorkspace(userId, workspaceId);
+    roleGuard(role, [Permissions.VIEW_ONLY]);
+
+    const { dashboard } = await getWorkspaceDashboardService(workspaceId, String(userId));
+
+    return res.status(HTTPSTATUS.OK).json({
+      status: true,
+      message: "Dashboard retrieved successfully!",
+      dashboard,
     });
   }
 );

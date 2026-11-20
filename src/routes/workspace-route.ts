@@ -6,6 +6,7 @@ import {
   deleteWorkspaceByIdController,
   getAllWorkspacesUserIsMemberController,
   getWorkspaceAnalyticsController,
+  getWorkspaceDashboardController,
   getWorkspaceByIdController,
   getWorkspaceMembersController,
   inviteMemberByEmailController,
@@ -19,6 +20,7 @@ router.get("/all", getAllWorkspacesUserIsMemberController);
 router.get("/:id", getWorkspaceByIdController);
 router.get("/members/:id", getWorkspaceMembersController);
 router.get("/analytics/:id", getWorkspaceAnalyticsController);
+router.get("/dashboard/:id", getWorkspaceDashboardController);
 router.put("/change/member/role/:id", changeWorkspaceMemberRoleController);
 router.put("/update/:id", updateWorkspaceByIdController);
 router.delete("/delete/:id", deleteWorkspaceByIdController);

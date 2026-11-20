@@ -13,6 +13,8 @@ export interface UserDocument extends Document {
   currentWorkspace: mongoose.Types.ObjectId | null;
   isOnline: boolean;
   lastSeen: Date | null;
+  // Personal look of the app (theme, font, text size…), synced across devices
+  appearance: Record<string, unknown> | null;
   comparePassword(value: string): Promise<boolean>;
   omitPassword(): Omit<UserDocument, "password">;
   isVerified: boolean;
@@ -55,19 +57,19 @@ const userSchema = new Schema<UserDocument>(
     lastLogin: { type: Date, default: null },
     isOnline: { type: Boolean, default: false },
     lastSeen: { type: Date, default: null },
+    appearance: { type: Schema.Types.Mixed, default: null },
   },
   {
     timestamps: true,
   }
 );
 
-userSchema.pre("save", async function (next) {
-  if (this.isModified("password")) {
-    if (this.password) {
-      this.password = await hashValue(this.password);
-    }
+// Async hook: Mongoose waits for the returned promise. Don't take a `next`
+// argument — newer Mongoose versions pass the save options there instead.
+userSchema.pre("save", async function () {
+  if (this.isModified("password") && this.password) {
+    this.password = await hashValue(this.password);
   }
-  next();
 });
 
 userSchema.methods.omitPassword = function (): Omit<UserDocument, "password"> {

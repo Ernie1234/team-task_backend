@@ -14,6 +14,14 @@ import {
   getDirectConversationsService
 } from "@/services/chat-service";
 import { BadRequestException, ForbiddenException } from "@/utils/appError";
+import {
+  getWorkspaceConversationsService,
+  getRoomAttachmentsService,
+  markRoomReadService,
+  resolveRoom,
+  sendMessageService,
+} from "@/services/chat-messaging-service";
+import { toAttachment } from "@/config/uploads";
 
 // Get messages for workspace chat
 export const getWorkspaceMessagesController = asyncHandler(
@@ -100,6 +108,8 @@ export const getDirectMessagesController = asyncHandler(
       throw new BadRequestException("Other user ID is required");
     }
 
+    // Throws unless both users share a workspace
+    await resolveRoom(userId, { chatType: "direct", otherUserId });
     const participants = [userId, otherUserId].sort(); // Sort for consistent ordering
 
     const result = await getMessagesService({
@@ -308,154 +318,82 @@ export const getDirectConversationsController = asyncHandler(
   }
 );
 
-// Send a message to workspace chat
-export const sendWorkspaceMessageController = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { workspaceId } = req.params;
-    const { content, messageType, replyTo } = req.body;
+// ---- Sending (REST fallback; the app normally sends over the socket) ----
+
+const sendViaRest = (chatType: "workspace" | "project" | "direct", param: string) =>
+  asyncHandler(async (req: Request, res: Response) => {
     const userId = req.user!._id.toString();
-
-    if (!workspaceId) {
-      throw new BadRequestException("Workspace ID is required");
-    }
-
-    if (!content || !content.trim()) {
-      throw new BadRequestException("Message content is required");
-    }
-
-    // Verify user has access to this workspace
-    const hasAccess = await verifyWorkspaceAccessService(userId, workspaceId);
-    if (!hasAccess) {
-      throw new ForbiddenException("Access denied to workspace");
-    }
-
-    const { createMessageService } = await import("@/services/chat-service");
-    const message = await createMessageService({
-      content: content.trim(),
-      sender: userId,
-      chatType: "workspace",
-      workspace: workspaceId,
-      messageType: messageType || "text",
-      replyTo: replyTo || null,
+    const target = req.params[param];
+    const { message } = await sendMessageService({
+      senderId: userId,
+      chatType,
+      workspace: chatType === "workspace" ? target : undefined,
+      project: chatType === "project" ? target : undefined,
+      otherUserId: chatType === "direct" ? target : undefined,
+      content: req.body?.content,
+      replyTo: req.body?.replyTo,
+      attachments: req.body?.attachments,
     });
-
-    // Populate sender info
-    await message.populate("sender", "name profilePicture");
-    if (replyTo) {
-      await message.populate({
-        path: "replyTo",
-        select: "content sender",
-        populate: {
-          path: "sender",
-          select: "name",
-        },
-      });
-    }
 
     return res.status(HTTPSTATUS.CREATED).json({
       status: true,
       message: "Message sent successfully!",
       data: message,
+    });
+  });
+
+export const sendWorkspaceMessageController = sendViaRest("workspace", "workspaceId");
+export const sendProjectMessageController = sendViaRest("project", "projectId");
+export const sendDirectMessageController = sendViaRest("direct", "otherUserId");
+
+// Upload files for a chat message; returns attachments to send with it
+export const uploadChatFilesController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+    if (files.length === 0) {
+      throw new BadRequestException("No files uploaded");
+    }
+
+    return res.status(HTTPSTATUS.CREATED).json({
+      status: true,
+      message: "Files uploaded",
+      attachments: files.map(toAttachment),
     });
   }
 );
 
-// Send a message to project chat
-export const sendProjectMessageController = asyncHandler(
+// Sidebar data: channels + DMs with last message and unread count
+export const getWorkspaceConversationsController = asyncHandler(
   async (req: Request, res: Response) => {
-    const { projectId } = req.params;
-    const { content, messageType, replyTo } = req.body;
     const userId = req.user!._id.toString();
+    const { conversations } = await getWorkspaceConversationsService(
+      userId,
+      req.params.workspaceId!
+    );
 
-    if (!projectId) {
-      throw new BadRequestException("Project ID is required");
-    }
-
-    if (!content || !content.trim()) {
-      throw new BadRequestException("Message content is required");
-    }
-
-    // Verify user has access to this project
-    const hasAccess = await verifyProjectAccessService(userId, projectId);
-    if (!hasAccess) {
-      throw new ForbiddenException("Access denied to project");
-    }
-
-    const { createMessageService } = await import("@/services/chat-service");
-    const message = await createMessageService({
-      content: content.trim(),
-      sender: userId,
-      chatType: "project",
-      project: projectId,
-      messageType: messageType || "text",
-      replyTo: replyTo || null,
-    });
-
-    // Populate sender info
-    await message.populate("sender", "name profilePicture");
-    if (replyTo) {
-      await message.populate({
-        path: "replyTo",
-        select: "content sender",
-        populate: {
-          path: "sender",
-          select: "name",
-        },
-      });
-    }
-
-    return res.status(HTTPSTATUS.CREATED).json({
+    return res.status(HTTPSTATUS.OK).json({
       status: true,
-      message: "Message sent successfully!",
-      data: message,
+      message: "Conversations fetched successfully!",
+      conversations,
     });
   }
 );
 
-// Send a direct message
-export const sendDirectMessageController = asyncHandler(
+// Photos and files shared in a conversation
+export const getRoomAttachmentsController = asyncHandler(
   async (req: Request, res: Response) => {
-    const { otherUserId } = req.params;
-    const { content, messageType, replyTo } = req.body;
     const userId = req.user!._id.toString();
+    const limit = parseInt(req.query.limit as string) || 60;
+    const { attachments } = await getRoomAttachmentsService(userId, req.params.roomId!, limit);
+    return res.status(HTTPSTATUS.OK).json({ status: true, attachments });
+  }
+);
 
-    if (!otherUserId) {
-      throw new BadRequestException("Other user ID is required");
-    }
-
-    if (!content || !content.trim()) {
-      throw new BadRequestException("Message content is required");
-    }
-
-    const participants = [userId, otherUserId].sort(); // Sort for consistent ordering
-
-    const { createMessageService } = await import("@/services/chat-service");
-    const message = await createMessageService({
-      content: content.trim(),
-      sender: userId,
-      chatType: "direct",
-      participants,
-      messageType: messageType || "text",
-      replyTo: replyTo || null,
-    });
-
-    // Populate sender info
-    await message.populate("sender", "name profilePicture");
-    if (replyTo) {
-      await message.populate({
-        path: "replyTo",
-        select: "content sender",
-        populate: {
-          path: "sender",
-          select: "name",
-        },
-      });
-    }
-
-    return res.status(HTTPSTATUS.CREATED).json({
-      status: true,
-      message: "Message sent successfully!",
-      data: message,
-    });
+// Mark a room (e.g. "project:<id>") as read
+export const markRoomReadController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user!._id.toString();
+    const result = await markRoomReadService(userId, req.body?.roomId);
+    return res.status(HTTPSTATUS.OK).json({ status: true, ...result });
   }
 );

@@ -10,7 +10,9 @@ import WorkspaceModel from "@/models/workspace-model";
 import { BadRequestException, NotFoundException } from "@/utils/appError";
 import ProjectModel from "@/models/project-model";
 import Logger from "@/utils/logger";
-import NotificationModel from "@/models/notification-model";
+import { NotificationTypeEnum } from "@/models/notification-model";
+import { notifyUsers } from "@/services/notification-service";
+import { forgetMemberships } from "@/utils/membership-cache";
 import ActivityModel from "@/models/activity-model";
 import { sendWorkspaceInvitationEmail } from "@/mails/emails";
 import { config } from "@/config/app.config";
@@ -43,6 +45,7 @@ export const createWorkspaceService = async (
     joinedAt: new Date(),
   });
   await member.save();
+  forgetMemberships(String(userId));
   user.currentWorkspace = workspace._id as mongoose.Types.ObjectId;
   await user.save();
 
@@ -71,15 +74,6 @@ export const getUserWorkspacesIsMemberService = async (userId: string) => {
 export const getWorkspaceByIdService = async (workspaceId: string) => {
   const workspace = await WorkspaceModel.findById(workspaceId);
   const members = await MemberModel.find({ workspaceId }).populate("role");
-  const notifications = await NotificationModel.find({
-    $or: [
-      { workspaceId: workspaceId },
-      { link: { $regex: `^/workspaces/${workspaceId}/`, $options: "i" } },
-    ],
-  })
-    .populate("sender", "name email profilePicture -password")
-    .populate("recipient", "name email profilePicture -password")
-    .sort({ createdAt: -1 });
   const activities = await ActivityModel.find({
     workspaceId: workspaceId,
   })
@@ -89,7 +83,6 @@ export const getWorkspaceByIdService = async (workspaceId: string) => {
   const workspaceWithMembers = {
     ...workspace?.toObject(),
     members,
-    notifications,
     activities,
   };
 
@@ -108,6 +101,137 @@ export const getWorkspaceMembersService = async (workspaceId: string) => {
 
   return { members, roles };
 };
+/**
+ * Everything the dashboard shows, in one round of parallel queries:
+ * headline counts, status/priority breakdown, completions per day for the
+ * last 14 days, the signed-in user's open tasks, and each member's workload.
+ */
+// Days are counted in the server's time zone, on both the database and JS side
+const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const TIMEZONE = !zone || zone === "UTC" || zone === "Etc/UTC" ? "+00:00" : zone;
+const localDayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+export const getWorkspaceDashboardService = async (workspaceId: string, userId: string) => {
+  const ws = new mongoose.Types.ObjectId(workspaceId);
+  const me = new mongoose.Types.ObjectId(userId);
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const endOfToday = new Date(startOfToday);
+  endOfToday.setDate(endOfToday.getDate() + 1);
+  const startOfWeek = new Date(startOfToday);
+  startOfWeek.setDate(startOfWeek.getDate() - ((startOfWeek.getDay() + 6) % 7)); // Monday
+  const trendStart = new Date(startOfToday);
+  trendStart.setDate(trendStart.getDate() - 13);
+
+  const open = { $ne: TaskStatusEnum.DONE };
+
+  const [byStatus, byPriority, overdue, dueToday, completedThisWeek, trend, myTasks, workload, members] =
+    await Promise.all([
+      TaskModel.aggregate([{ $match: { workspace: ws } }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
+      TaskModel.aggregate([
+        { $match: { workspace: ws, status: open } },
+        { $group: { _id: "$priority", count: { $sum: 1 } } },
+      ]),
+      TaskModel.countDocuments({ workspace: ws, status: open, dueDate: { $lt: startOfToday } }),
+      TaskModel.countDocuments({ workspace: ws, status: open, dueDate: { $gte: startOfToday, $lt: endOfToday } }),
+      TaskModel.countDocuments({
+        workspace: ws,
+        status: TaskStatusEnum.DONE,
+        $or: [{ completedAt: { $gte: startOfWeek } }, { completedAt: null, updatedAt: { $gte: startOfWeek } }],
+      }),
+      // Tasks finished before completedAt existed fall back to their last update
+      TaskModel.aggregate([
+        { $match: { workspace: ws, status: TaskStatusEnum.DONE } },
+        { $addFields: { doneAt: { $ifNull: ["$completedAt", "$updatedAt"] } } },
+        { $match: { doneAt: { $gte: trendStart } } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$doneAt", timezone: TIMEZONE } }, count: { $sum: 1 } } },
+      ]),
+      TaskModel.find({ workspace: ws, assignedTo: me, status: open })
+        .sort({ dueDate: 1, createdAt: -1 })
+        .limit(30)
+        .populate([
+          { path: "project", select: "name emoji" },
+          { path: "parentTask", select: "title" },
+        ])
+        .lean(),
+      TaskModel.aggregate([
+        { $match: { workspace: ws, status: open, assignedTo: { $ne: null } } },
+        {
+          $group: {
+            _id: "$assignedTo",
+            open: { $sum: 1 },
+            overdue: {
+              $sum: { $cond: [{ $and: [{ $ne: ["$dueDate", null] }, { $lt: ["$dueDate", startOfToday] }] }, 1, 0] },
+            },
+            inProgress: { $sum: { $cond: [{ $eq: ["$status", TaskStatusEnum.IN_PROGRESS] }, 1, 0] } },
+          },
+        },
+      ]),
+      MemberModel.find({ workspaceId: ws })
+        .populate<{
+          userId: { _id: mongoose.Types.ObjectId; name: string; profilePicture?: string | null; isOnline?: boolean } | null;
+        }>("userId", "name profilePicture isOnline")
+        .lean(),
+    ]);
+
+  const statusCounts: Record<string, number> = Object.fromEntries(
+    Object.values(TaskStatusEnum).map((s) => [s, 0])
+  );
+  byStatus.forEach((row) => (statusCounts[row._id] = row.count));
+  const total = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+  const done = statusCounts[TaskStatusEnum.DONE] ?? 0;
+
+  const priorityCounts: Record<string, number> = { HIGH: 0, MEDIUM: 0, LOW: 0 };
+  byPriority.forEach((row) => (priorityCounts[row._id] = row.count));
+
+  // One entry per day, including days with nothing completed
+  const perDay = new Map(trend.map((row) => [row._id as string, row.count as number]));
+  const completedByDay = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(trendStart);
+    d.setDate(d.getDate() + i);
+    const key = localDayKey(d);
+    return { date: key, count: perDay.get(key) ?? 0 };
+  });
+
+  const loadByUser = new Map(workload.map((row) => [String(row._id), row]));
+  const team = members
+    .filter((m) => m.userId)
+    .map((m) => {
+      const load = loadByUser.get(String(m.userId!._id));
+      return {
+        _id: String(m.userId!._id),
+        name: m.userId!.name,
+        profilePicture: m.userId!.profilePicture ?? null,
+        isOnline: !!m.userId!.isOnline,
+        open: load?.open ?? 0,
+        overdue: load?.overdue ?? 0,
+        inProgress: load?.inProgress ?? 0,
+      };
+    })
+    .sort((a, b) => b.open - a.open || a.name.localeCompare(b.name));
+
+  return {
+    dashboard: {
+      totals: {
+        total,
+        open: total - done,
+        done,
+        inProgress: statusCounts[TaskStatusEnum.IN_PROGRESS] ?? 0,
+        overdue,
+        dueToday,
+        completedThisWeek,
+        completionRate: total ? Math.round((done / total) * 100) : 0,
+      },
+      byStatus: statusCounts,
+      byPriority: priorityCounts,
+      completedByDay,
+      myTasks,
+      team,
+    },
+  };
+};
+
 export const getWorkspaceAnalyticsService = async (workspaceId: string) => {
   const currentDate = new Date();
   const totalTasks = await TaskModel.countDocuments({
@@ -231,6 +355,7 @@ export const deleteWorkspaceByIdService = async ({
       session
     );
     await TaskModel.deleteMany({ workspace: workspace._id }).session(session);
+    forgetMemberships();
     await MemberModel.deleteMany({ workspaceId: workspace._id }).session(
       session
     );
@@ -293,18 +418,21 @@ export const inviteMemberByEmailService = async ({
     inviteURL
   );
 
-  // Get all members of the workspace to send notifications to everyone
-  const membersInWorkspace = await MemberModel.find({ workspaceId });
-  const notificationPromises = membersInWorkspace.map((member) => {
-    return NotificationModel.create({
+  // Let the other members know who was invited
+  const membersInWorkspace = await MemberModel.find({
+    workspaceId,
+    userId: { $ne: inviterId },
+  });
+  await notifyUsers(
+    membersInWorkspace.map((member) => ({
       sender: inviterId,
       recipient: member.userId,
       workspaceId,
-      message: `An invitation has been sent by ${inviter.name} to ${emailToInvite} to join the workspace.`,
-      link: `/workspaces/${workspaceId}`,
-    });
-  });
-  await Promise.all(notificationPromises);
+      type: NotificationTypeEnum.MEMBER_INVITED,
+      message: `${inviter.name} invited ${emailToInvite} to join the workspace.`,
+      link: `/workspace/${workspaceId}/members`,
+    }))
+  );
 
   const activity = new ActivityModel({
     user: inviterId,

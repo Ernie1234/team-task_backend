@@ -31,6 +31,24 @@ const activitySchema = new Schema<ActivityDocument>(
   }
 );
 
+activitySchema.index({ workspaceId: 1, createdAt: -1 });
+
+// Push every new activity to members currently viewing the workspace.
+// (They're subscribed to its presence room; see socket.config.)
+activitySchema.post("save", async function (doc) {
+  try {
+    const { getSocketService } = await import("@/config/socket.config");
+    const socketService = getSocketService();
+    if (!socketService) return;
+    await doc.populate("user", "name email profilePicture");
+    socketService.emitToRooms([`presence:${doc.workspaceId}`], "activity:new", {
+      activity: doc.toObject(),
+    });
+  } catch {
+    // Live updates are best-effort; the activity itself is already saved
+  }
+});
+
 const ActivityModel = mongoose.model<ActivityDocument>(
   "Activity",
   activitySchema

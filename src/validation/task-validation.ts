@@ -18,6 +18,19 @@ export const taskParamsSchema = z.object({
     .optional(), // taskId is optional because it doesn't exist for the create route.
 });
 
+const objectId = (label: string) =>
+  z.string().refine((val) => /^[0-9a-fA-F]{24}$/.test(val), {
+    message: `Invalid ${label} ID format.`,
+  });
+
+// Accepts a date string, or null/"" to clear the date
+const optionalDate = z
+  .preprocess(
+    (value) => (value === "" || value === null ? null : value),
+    z.coerce.date().nullable()
+  )
+  .optional();
+
 // Zod schema for the CREATE request BODY.
 // This only validates the data coming from the user in the request body.
 export const createTaskBodySchema = z.object({
@@ -47,6 +60,8 @@ export const createTaskBodySchema = z.object({
         message: "Invalid date format. Please provide a valid date.",
       }
     ),
+  // Create as a subtask of this task
+  parentTask: objectId("parent task").nullable().optional(),
 });
 
 // A combined schema for the CREATE request that includes body and params.
@@ -74,7 +89,7 @@ export const updateTaskBodySchema = z.object({
     })
     .nullable()
     .optional(),
-  dueDate: z.coerce.date().optional(),
+  dueDate: optionalDate,
 });
 
 // A combined schema for the UPDATE request that includes body and params.
@@ -90,6 +105,10 @@ export const getAllTasksQuerySchema = z.object({
   dueDate: z.string().optional(),
   pageSize: z.string().optional(),
   pageNumber: z.string().optional(),
+  // Subtasks of one task; otherwise only top-level tasks are listed
+  parentTask: objectId("parent task").optional(),
+  sortBy: z.enum(["createdAt", "dueDate", "priority", "title", "updatedAt"]).optional(),
+  sortOrder: z.enum(["asc", "desc"]).optional(),
 });
 
 export type GetAllTasksQueryParams = z.infer<typeof getAllTasksQuerySchema>;

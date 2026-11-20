@@ -14,7 +14,12 @@ import {
   sendWorkspaceMessageController,
   sendProjectMessageController,
   sendDirectMessageController,
+  uploadChatFilesController,
+  getWorkspaceConversationsController,
+  markRoomReadController,
+  getRoomAttachmentsController,
 } from "@/controllers/chat-controller";
+import { chatUploadMiddleware } from "@/config/uploads";
 
 const chatRouter = Router();
 
@@ -28,6 +33,7 @@ chatRouter.get("/workspace/:workspaceId/online-users", getOnlineUsersController)
 chatRouter.get("/workspace/:workspaceId/members", getWorkspaceMembersController);
 chatRouter.get("/workspace/:workspaceId/search", searchWorkspaceMessagesController);
 chatRouter.get("/workspace/:workspaceId/stats", getWorkspaceStatsController);
+chatRouter.get("/workspace/:workspaceId/conversations", getWorkspaceConversationsController);
 
 // Project chat routes
 chatRouter.get("/project/:projectId/messages", getProjectMessagesController);
@@ -39,7 +45,12 @@ chatRouter.get("/direct/:otherUserId/messages", getDirectMessagesController);
 chatRouter.post("/direct/:otherUserId/messages", sendDirectMessageController);
 chatRouter.get("/direct/conversations", getDirectConversationsController);
 
+// Attachments: upload first, then send the returned attachments with the message
+chatRouter.post("/uploads", chatUploadMiddleware, uploadChatFilesController);
+
 // General chat routes
+chatRouter.post("/rooms/read", markRoomReadController);
+chatRouter.get("/rooms/:roomId/attachments", getRoomAttachmentsController);
 chatRouter.post("/messages/mark-read", markMessagesAsReadController);
 
 export default chatRouter;

@@ -1,10 +1,12 @@
-import MessageModel, { MessageDocument } from "@/models/message-model";
-import UserModel from "@/models/user-model";
+import MessageModel, { type MessageDocument } from "@/models/message-model";
+import UserModel, { type UserDocument } from "@/models/user-model";
+import type { RoleDocument } from "@/models/role-model";
 import WorkspaceModel from "@/models/workspace-model";
 import MemberModel from "@/models/member-model";
 import ProjectModel from "@/models/project-model";
 import mongoose from "mongoose";
 import { BadRequestException, ForbiddenException, NotFoundException } from "@/utils/appError";
+import { MESSAGE_POPULATE } from "@/services/chat-messaging-service";
 
 export interface CreateMessageData {
   content: string;
@@ -63,9 +65,9 @@ export const getMessagesService = async (query: GetMessagesQuery): Promise<{
   const skip = query.skip || 0;
 
   // Build query filter based on chat type
+  // Deleted messages stay in the history as "This message was deleted" placeholders
   const filter: any = {
     chatType: query.chatType,
-    isDeleted: false,
   };
 
   switch (query.chatType) {
@@ -96,16 +98,7 @@ export const getMessagesService = async (query: GetMessagesQuery): Promise<{
   // Get messages with pagination
   const messages = await MessageModel
     .find(filter)
-    .populate("sender", "name profilePicture -password")
-    .populate({
-      path: "replyTo",
-      select: "content sender",
-      populate: {
-        path: "sender",
-        select: "name",
-      },
-    })
-    .populate("reactions.user", "name profilePicture")
+    .populate(MESSAGE_POPULATE)
     .sort({ createdAt: -1 }) // Latest first
     .limit(limit)
     .skip(skip);
@@ -126,7 +119,7 @@ export const getOnlineUsersService = async (workspaceId: string): Promise<any[]>
   // Get all members of the workspace who are online
   const members = await MemberModel
     .find({ workspaceId })
-    .populate({
+    .populate<{ userId: UserDocument | null }>({
       path: "userId",
       match: { isOnline: true },
       select: "name profilePicture isOnline lastSeen",
@@ -135,7 +128,7 @@ export const getOnlineUsersService = async (workspaceId: string): Promise<any[]>
 
   // Filter out members whose user is null (offline users won't match)
   return members
-    .filter(member => member.userId)
+    .filter((member): member is typeof member & { userId: UserDocument } => !!member.userId)
     .map(member => ({
       _id: member.userId._id,
       name: member.userId.name,
@@ -184,12 +177,15 @@ export const verifyProjectAccessService = async (userId: string, projectId: stri
 export const getWorkspaceMembersService = async (workspaceId: string): Promise<any[]> => {
   const members = await MemberModel
     .find({ workspaceId })
-    .populate("userId", "name profilePicture isOnline lastSeen")
-    .populate("role", "name permissions");
+    .populate<{ userId: UserDocument | null }>("userId", "name email profilePicture isOnline lastSeen")
+    .populate<{ role: RoleDocument }>("role", "name permissions");
 
-  return members.map(member => ({
+  return members
+    .filter((member): member is typeof member & { userId: UserDocument } => !!member.userId)
+    .map(member => ({
     _id: member.userId._id,
     name: member.userId.name,
+    email: member.userId.email,
     profilePicture: member.userId.profilePicture,
     isOnline: member.userId.isOnline,
     lastSeen: member.userId.lastSeen,
@@ -197,7 +193,7 @@ export const getWorkspaceMembersService = async (workspaceId: string): Promise<a
       name: member.role.name,
       permissions: member.role.permissions,
     },
-    joinedAt: member.createdAt,
+    joinedAt: member.joinedAt,
   }));
 };
 

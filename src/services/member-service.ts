@@ -2,7 +2,9 @@ import { ErrorCodeEnum } from "@/enums/errorCode.enum";
 import { Roles } from "@/enums/role-enum";
 import ActivityModel from "@/models/activity-model";
 import MemberModel from "@/models/member-model";
-import NotificationModel from "@/models/notification-model";
+import { NotificationTypeEnum } from "@/models/notification-model";
+import { notifyUsers } from "@/services/notification-service";
+import { forgetMemberships } from "@/utils/membership-cache";
 import RoleModel from "@/models/role-model";
 import UserModel from "@/models/user-model";
 import WorkspaceModel from "@/models/workspace-model";
@@ -60,33 +62,33 @@ export const joinWorkspaceByInvite = async (
     role: role._id,
   });
   await newMember.save();
+  forgetMemberships(String(userId));
 
   const user = await UserModel.findById(userId);
 
-  // Notify all existing members of the new join
+  // Notify the existing members of the new join, and welcome the new member
   const membersInWorkspace = await MemberModel.find({
     workspaceId: workspace._id,
+    userId: { $ne: userId },
   });
-  const joinNotificationPromises = membersInWorkspace.map((member) => {
-    return NotificationModel.create({
+  await notifyUsers([
+    ...membersInWorkspace.map((member) => ({
       sender: userId,
       recipient: member.userId,
-      workspaceId: workspace._id,
+      workspaceId: String(workspace._id),
+      type: NotificationTypeEnum.MEMBER_JOINED,
       message: `${user?.name || "A new user"} has joined the workspace!`,
-      link: `/workspaces/${workspace._id}`,
-    });
-  });
-
-  joinNotificationPromises.push(
-    NotificationModel.create({
+      link: `/workspace/${workspace._id}/members`,
+    })),
+    {
       sender: userId,
       recipient: userId,
-      workspaceId: workspace._id,
+      workspaceId: String(workspace._id),
+      type: NotificationTypeEnum.WELCOME,
       message: `Welcome to the ${workspace.name} workspace!`,
-      link: `/workspaces/${workspace._id}`,
-    })
-  );
-  await Promise.all(joinNotificationPromises);
+      link: `/workspace/${workspace._id}`,
+    },
+  ]);
 
   const activity = new ActivityModel({
     user: userId,

@@ -19,6 +19,10 @@ export interface TaskDocument extends Document {
   assignedTo: mongoose.Types.ObjectId | null;
   createdBy: mongoose.Types.ObjectId;
   dueDate: Date | null;
+  // Set on subtasks: the task this one belongs to (one level deep)
+  parentTask: mongoose.Types.ObjectId | null;
+  // When the task was last moved to Done (null while open)
+  completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -74,11 +78,23 @@ const taskSchema = new Schema<TaskDocument>(
       type: Date,
       default: null,
     },
+    parentTask: {
+      type: Schema.Types.ObjectId,
+      ref: "Task",
+      default: null,
+      index: true,
+    },
+    completedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
   }
 );
+
+taskSchema.index({ workspace: 1, parentTask: 1, createdAt: -1 });
 
 const TaskModel = mongoose.model<TaskDocument>("Task", taskSchema);
 

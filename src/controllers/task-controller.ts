@@ -81,9 +81,11 @@ export const getAllTasksInProjectController = asyncHandler(
     };
 
     const pagination = {
-      pageSize: validatedQuery.pageSize
-        ? parseInt(validatedQuery.pageSize, 10)
-        : 10,
+      // Board/list views load a whole workspace at once; keep it bounded
+      pageSize: Math.min(
+        500,
+        Math.max(1, validatedQuery.pageSize ? parseInt(validatedQuery.pageSize, 10) || 10 : 10)
+      ),
       pageNumber: validatedQuery.pageNumber
         ? parseInt(validatedQuery.pageNumber, 10)
         : 1,
@@ -112,21 +114,24 @@ export const getAllTasksInProjectController = asyncHandler(
     const { role } = await getMemberRoleInWorkspace(userId, workspaceId);
     roleGuard(role, [Permissions.VIEW_ONLY]);
 
-    const { tasks, totalCount, notifications, activities } =
-      await getAllTasksService({
-        workspaceId,
-        filters,
-        pagination,
-        userId,
-      });
+    const { tasks, totalCount } = await getAllTasksService({
+      workspaceId,
+      filters,
+      pagination,
+      userId,
+    });
 
     return res.status(HTTPSTATUS.OK).json({
       status: true,
       message: "Tasks retrieved successfully!",
       tasks,
       totalCount,
-      notifications,
-      activities,
+      pagination: {
+        ...pagination,
+        totalCount,
+        totalPages: Math.ceil(totalCount / pagination.pageSize),
+        skip: (pagination.pageNumber - 1) * pagination.pageSize,
+      },
     });
   }
 );
@@ -143,12 +148,13 @@ export const getTaskByIdController = asyncHandler(
     const { role } = await getMemberRoleInWorkspace(userId, workspaceId);
     roleGuard(role, [Permissions.VIEW_ONLY]);
 
-    const { task } = await getATaskService({ workspaceId, projectId, taskId });
+    const { task, subtasks } = await getATaskService({ workspaceId, projectId, taskId });
 
     return res.status(HTTPSTATUS.OK).json({
       status: true,
       message: "Task fetched successfully!",
       task,
+      subtasks,
     });
   }
 );

@@ -10,6 +10,8 @@ import taskRoute from "./task-route";
 import notificationRoute from "./notification-route";
 import activitiesRoute from "./activities-route";
 import chatRoute from "./chat-route";
+import noteRoute from "./note-route";
+import calendarRoute from "./calendar-route";
 
 const apiRouter: Router = Router();
 
@@ -22,5 +24,7 @@ apiRouter.use("/tasks", isAuthenticated, taskRoute);
 apiRouter.use("/notifications", isAuthenticated, notificationRoute);
 apiRouter.use("/activities", isAuthenticated, activitiesRoute);
 apiRouter.use("/chat", chatRoute);
+apiRouter.use("/notes", isAuthenticated, noteRoute);
+apiRouter.use("/calendar", isAuthenticated, calendarRoute);
 
 export default apiRouter;

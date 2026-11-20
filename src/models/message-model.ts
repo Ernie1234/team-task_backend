@@ -1,6 +1,14 @@
 import mongoose, { Document, Schema } from "mongoose";
 
+export interface MessageAttachment {
+  url: string; // "/uploads/chat/..." served by the API
+  name: string;
+  size: number;
+  mimeType: string;
+}
+
 export interface MessageDocument extends Document {
+  attachments: MessageAttachment[];
   content: string;
   sender: mongoose.Types.ObjectId;
   chatType: "workspace" | "project" | "direct";
@@ -25,7 +33,11 @@ const messageSchema = new Schema<MessageDocument>(
   {
     content: {
       type: String,
-      required: true,
+      // Text is optional when the message carries attachments
+      required: function (this: MessageDocument) {
+        return !(this.attachments && this.attachments.length > 0);
+      },
+      default: "",
       trim: true,
       maxlength: 2000, // Limit message length
     },
@@ -79,6 +91,15 @@ const messageSchema = new Schema<MessageDocument>(
       type: Date,
       default: null,
     },
+    attachments: [
+      {
+        _id: false,
+        url: { type: String, required: true },
+        name: { type: String, required: true },
+        size: { type: Number, required: true },
+        mimeType: { type: String, required: true },
+      },
+    ],
     reactions: [
       {
         user: {

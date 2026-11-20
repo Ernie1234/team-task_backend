@@ -4,8 +4,12 @@ import { config } from "@/config/app.config";
 
 const TOKEN = config.MAILTRAP_TOKEN;
 
-if (!TOKEN) {
-  Logger.error("Mailtrap token is missing in environment variables");
+export const isMailEnabled = Boolean(TOKEN);
+
+if (!isMailEnabled) {
+  Logger.warn(
+    "MAILTRAP_TOKEN is not set — emails are disabled. Verification codes and invite links will be printed to this console instead."
+  );
 }
 
 export const mailtrapClient = new MailtrapClient({
