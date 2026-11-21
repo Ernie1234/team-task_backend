@@ -2,6 +2,7 @@ import { HTTPSTATUS } from "@/config/http.config";
 import { ErrorCodeEnum } from "@/enums/errorCode.enum";
 import { AppError } from "@/utils/appError";
 import Logger from "@/utils/logger";
+import { reportError } from "@/config/instrument";
 import type {
   ErrorRequestHandler,
   NextFunction,
@@ -28,7 +29,6 @@ export const errorHandler: ErrorRequestHandler = (
   res: Response,
   next: NextFunction
 ): any => {
-  Logger.error(`Error Occurred on PATH: ${req.path} `, error);
   if (error instanceof SyntaxError) {
     return res.status(HTTPSTATUS.BAD_REQUEST).json({
       message: "Invalid JSON format. Please check your request body.",
@@ -36,6 +36,10 @@ export const errorHandler: ErrorRequestHandler = (
   }
 
   if (error instanceof AppError) {
+    if (error.statusCode >= 500) {
+      Logger.error(`${req.method} ${req.path} failed:`, error);
+      reportError(error);
+    }
     return res.status(error.statusCode).json({
       message: error.message,
       errorCode: error.errorCode,
@@ -46,9 +50,13 @@ export const errorHandler: ErrorRequestHandler = (
     return formatZodError(res, error);
   }
 
+  // Unexpected: log it, send it to Sentry, and don't show internals to the caller
+  Logger.error(`${req.method} ${req.path} failed:`, error);
+  reportError(error);
   return res.status(HTTPSTATUS.INTERNAL_SERVER_ERROR).json({
-    message: "Internal Server Error",
-    error: error?.message || "Unknown error occurred",
+    message: "Something went wrong on our side. Please try again.",
+    errorCode: "INTERNAL_SERVER_ERROR",
+    ...(process.env.NODE_ENV === "development" ? { error: error?.message } : {}),
   });
 
   //   next();

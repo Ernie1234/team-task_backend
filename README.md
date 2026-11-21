@@ -25,6 +25,7 @@ Unticked items are on the [roadmap](#roadmap).
 - [x] **Account:** profile, set / change password, signed-in devices with remote log out, account deletion (soft delete with data clean-up)
 - [x] **Preferences:** per-user appearance settings synced across devices
 - [x] **Onboarding:** guided-tour state per user (pending for new accounts, then completed or skipped)
+- [x] **Observability:** JSON logs with a request id and user on every line (`X-Request-Id` in and out), Prometheus metrics (HTTP by route pattern, sockets, live notes, jobs, emails, process), liveness and readiness probes, Sentry error tracking with secrets stripped
 - [x] **Reliability:** graceful shutdown (sockets, HTTP, jobs, database), parallel queries for a remote database, Zod validation on every input
 
 ## Roadmap
@@ -38,7 +39,7 @@ Backend items from the [main roadmap](https://github.com/Ernie1234/team-task_fro
 - [ ] Socket.IO Redis adapter for several instances
 - [ ] File storage on S3 / Cloudflare R2 with signed URLs
 - [ ] CI with GitHub Actions; unit and integration tests in the repo
-- [ ] Observability: Sentry, structured logs, `/health`, metrics
+- [x] Observability: Sentry, structured logs, `/health`, metrics
 - [ ] Security: rate limiting, CSRF protection, passkeys and two-factor sign-in
 - [ ] Background-jobs service in **Go** (reminders, calendar sync, email) on a Redis / NATS queue
 - [ ] Analytics service in **Python (FastAPI)**
@@ -96,6 +97,9 @@ bun run dev       # http://localhost:3000
 | `MAILTRAP_TOKEN`, `MAILTRAP_ENDPOINT`, `MAILTRAP_TEMPLATE_UUID` | Transactional email |
 | `GOOGLE_CALENDAR_CALLBACK_URL` _(optional)_ | Calendar OAuth callback; defaults to `<API origin>/api/v1/calendar/google/callback` |
 | `CALENDAR_TOKEN_KEY` _(optional)_ | Key for encrypting calendar tokens; defaults to one derived from `SESSION_SECRET` |
+| `LOG_FORMAT`, `LOG_LEVEL` _(optional)_ | `json` (default in production) or `pretty`; `error`, `warn`, `info` (production default), `http`, `debug` |
+| `SENTRY_DSN` _(optional)_ | Turns on error tracking. Also `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, `SENTRY_TRACES_SAMPLE_RATE` |
+| `METRICS_TOKEN` | Bearer token for `GET /metrics`; required in production (open in development) |
 
 ### Google Calendar setup
 
@@ -105,6 +109,28 @@ In the Google Cloud console, on the same OAuth client used for sign-in:
 2. Under Data Access, add the scope `https://www.googleapis.com/auth/calendar.events`.
 3. Add the redirect URIs `http://localhost:3000/api/v1/auth/callback/google` (sign-in) and `http://localhost:3000/api/v1/calendar/google/callback` (Calendar).
 4. While the app is in Testing mode, add each user under Audience → Test users.
+
+## Observability
+
+| Endpoint | What it's for |
+| --- | --- |
+| `GET /health` | Liveness: the process is up (status, version, uptime) |
+| `GET /health/ready` | Readiness: both database connections answer; `503` while shutting down so traffic drains |
+| `GET /metrics` | Prometheus metrics (`Authorization: Bearer $METRICS_TOKEN`) |
+
+Every response has an `X-Request-Id` (kept from a proxy if it sends one). The same id is on every log line for that request, on its Sentry report, and in error messages shown in the web app (`ref 1a2b3c4d`), so a user's report leads straight to the log line.
+
+A Prometheus scrape job:
+
+```yaml
+scrape_configs:
+  - job_name: team-task-api
+    metrics_path: /metrics
+    authorization: { credentials: <METRICS_TOKEN> }
+    static_configs: [{ targets: ["localhost:3000"] }]
+```
+
+Useful queries: `sum by (route) (rate(teamtask_http_requests_total{status=~"5.."}[5m]))` (errors by route), `histogram_quantile(0.95, sum by (le, route) (rate(teamtask_http_request_duration_seconds_bucket[5m])))` (p95 latency), `teamtask_online_users`, `teamtask_live_note_editors`, `rate(teamtask_job_failures_total[15m])`.
 
 ## Project structure
 
@@ -117,8 +143,8 @@ src/
   models/        Mongoose schemas
   validation/    Zod schemas
   routes/        Express routers
-  middlewares/   session lookup, auth guard, error handling
-  utils/         Google Calendar client, token encryption, time zones, caches
+  middlewares/   request ids + access logs + metrics, session lookup, auth guard, error handling
+  utils/         logger, metrics, request context, Google Calendar client, token encryption, time zones, caches
 ```
 
 ## Scripts

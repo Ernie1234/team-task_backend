@@ -1,5 +1,7 @@
 import { processDueReminders, syncAllCalendars } from "@/services/calendar-service";
 import Logger from "@/utils/logger";
+import { trackJob } from "@/utils/metrics";
+import { reportError } from "@/config/instrument";
 
 const REMINDER_EVERY_MS = 30_000;
 const SYNC_EVERY_MS = 5 * 60_000;
@@ -12,9 +14,10 @@ const guarded = (key: keyof typeof running, job: () => Promise<unknown>) => asyn
   if (running[key]) return;
   running[key] = true;
   try {
-    await job();
+    await trackJob(`calendar_${key}`, job);
   } catch (error) {
     Logger.error(`Calendar ${key} job failed:`, error);
+    reportError(error, { job: `calendar_${key}` });
   } finally {
     running[key] = false;
   }

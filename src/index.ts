@@ -1,4 +1,6 @@
 import "dotenv/config";
+// Error tracking first, so it sees everything that follows
+import { flushErrorReports, reportError } from "./config/instrument";
 import express from "express";
 import { createServer } from "http";
 import type { Request, Response, NextFunction } from "express";
@@ -8,7 +10,8 @@ import { toNodeHandler } from "better-auth/node";
 
 import { config } from "./config/app.config";
 import Logger from "./utils/logger";
-import morganMiddleware from "./middlewares/morgan-middleware";
+import { bindUserToRequest, requestObservability } from "./middlewares/request-observability";
+import healthRoute, { markDraining } from "./routes/health-route";
 import { connectDB, disconnectDB } from "./config/db";
 import { flushNoteSessions } from "./services/note-collab-service";
 import { errorHandler } from "./middlewares/errorHandlerMiddleware";
@@ -30,13 +33,18 @@ const BASE_PATH = config.BASE_PATH;
 // Initialize Socket.IO service
 let socketService: SocketService;
 
+// Request id, request log line and metrics for every request
+app.use(requestObservability);
+// /health, /health/ready and /metrics (before CORS and sessions: probes don't need them)
+app.use(healthRoute);
 app.use(helmet());
-app.use(morganMiddleware);
 // CORS first, so the web app (another origin) can send cookies
 app.use(
   cors({
     origin: config.FRONTEND_ORIGIN,
     credentials: true,
+    // The web app shows this as an error reference
+    exposedHeaders: ["X-Request-Id"],
   })
 );
 
@@ -50,6 +58,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Who is calling: sets req.user / req.authSession from the Better Auth session cookie
 app.use(attachSession);
+app.use(bindUserToRequest);
 
 app.get(
   "/",
@@ -125,6 +134,7 @@ const shutdown = async (signal: string) => {
     process.exit(1);
   }
   isShuttingDown = true;
+  markDraining();
   Logger.info(`🛑 ${signal} received, shutting down gracefully...`);
 
   // Last resort if something hangs (unref so it never keeps the process alive)
@@ -161,6 +171,7 @@ const shutdown = async (signal: string) => {
     await Promise.all([disconnectDB(), authMongoClient.close()]);
     Logger.info("🔌 Database connection closed");
 
+    await flushErrorReports();
     Logger.info("✅ Shutdown complete");
     process.exit(0);
   } catch (error) {
@@ -171,6 +182,7 @@ const shutdown = async (signal: string) => {
 
 process.on("unhandledRejection", (reason) => {
   Logger.error("Unhandled promise rejection:", reason);
+  reportError(reason);
 });
 
 startServer();

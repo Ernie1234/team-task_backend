@@ -17,7 +17,6 @@
     "@types/cookie-session": "^2.0.49",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
-    "@types/morgan": "^1.9.10",
     "@types/multer": "^2.3.0",
     "socket.io-client": "4"
   },
@@ -25,6 +24,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@sentry/bun": "^10.78.0",
     "@types/socket.io": "^3.0.2",
     "bcrypt": "^6.0.0",
     "better-auth": "1.7.27",
@@ -38,8 +38,8 @@
     "mailtrap": "^4.2.0",
     "mongodb": "^6.18.0",
     "mongoose": "^8.17.1",
-    "morgan": "^1.10.1",
     "multer": "^2",
+    "prom-client": "^15.1.3",
     "socket.io": "^4.8.1",
     "uuid": "^11.1.0",
     "winston": "^3.17.0",

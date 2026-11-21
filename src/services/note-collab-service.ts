@@ -5,6 +5,7 @@ import NoteModel from "@/models/note-model";
 import { findVisibleNote } from "@/services/note-service";
 import { BadRequestException, NotFoundException } from "@/utils/appError";
 import Logger from "@/utils/logger";
+import { registerGauge } from "@/utils/metrics";
 
 /*
  * Live co-editing for Notes.
@@ -41,6 +42,9 @@ type Session = {
 };
 
 const sessions = new Map<string, Session>();
+
+registerGauge("teamtask_live_notes", "Notes open for live editing", () => sessions.size);
+registerGauge("teamtask_live_note_editors", "Tabs editing notes live", () => [...sessions.values()].reduce((sum, s) => sum + s.members.size, 0));
 const opening = new Map<string, Promise<Session>>();
 let io: SocketIOServer | null = null;
 

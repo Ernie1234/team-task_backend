@@ -12,6 +12,8 @@ import NotificationModel, { NotificationTypeEnum, type NotificationType } from "
 import TaskModel from "@/models/task-model";
 import UserModel, { type EmailPrefs } from "@/models/user-model";
 import Logger from "@/utils/logger";
+import { emailFailures, emailsSent } from "@/utils/metrics";
+import { reportError } from "@/config/instrument";
 import { dateInZone, isValidTimeZone, zonedMidnight } from "@/utils/zoned-time";
 
 /*
@@ -154,7 +156,9 @@ export const processEmailQueue = async (now = new Date()) => {
         text: renderText([subject, "", ...items.map((i) => `- ${i.title}${i.url ? ` (${i.url})` : ""}`), "", `Email settings: ${settingsUrl(workspaceId)}`]),
       });
       emails++;
+      emailsSent.inc({ kind: "notification" });
     } catch (error) {
+      emailFailures.inc({ kind: "notification" });
       Logger.error(`Notification email to ${user.email} failed:`, error);
     }
   }
@@ -294,8 +298,11 @@ export const processDigests = async (now = new Date()) => {
       if (digest.empty) continue; // nothing to say today
       await sendDigest(user as DigestUser, digest);
       sent++;
+      emailsSent.inc({ kind: "digest" });
     } catch (error) {
+      emailFailures.inc({ kind: "digest" });
       Logger.error(`Daily digest for ${user.email} failed:`, error);
+      reportError(error, { job: "daily_digest" });
     }
   }
   return { sent };

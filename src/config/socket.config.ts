@@ -9,6 +9,7 @@ import MemberModel from "@/models/member-model";
 import { chatSocketHandlers } from "@/handlers/chat-socket.handlers";
 import { noteSocketHandlers } from "@/handlers/note-socket.handlers";
 import { setNoteCollabServer } from "@/services/note-collab-service";
+import { registerGauge } from "@/utils/metrics";
 
 export interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -50,6 +51,8 @@ export class SocketService {
       pingTimeout: 5000,
     });
     setNoteCollabServer(this.io);
+    registerGauge("teamtask_socket_connections", "Open Socket.IO connections", () => this.io.engine.clientsCount);
+    registerGauge("teamtask_online_users", "People with at least one tab open", () => this.userSockets.size);
 
     this.setupMiddleware();
     this.setupEventHandlers();

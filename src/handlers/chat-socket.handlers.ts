@@ -2,6 +2,7 @@ import { Server as SocketIOServer } from "socket.io";
 import Logger from "@/utils/logger";
 import type { AuthenticatedSocket } from "@/config/socket.config";
 import { AppError } from "@/utils/appError";
+import { reportError } from "@/config/instrument";
 import {
   deleteMessageService,
   editMessageService,
@@ -27,7 +28,10 @@ export const withAck =
       respond({ ok: true, ...(result ?? {}) });
     } catch (error) {
       const message = error instanceof AppError ? error.message : "Something went wrong";
-      if (!(error instanceof AppError)) Logger.error(`Socket ${name} failed:`, error);
+      if (!(error instanceof AppError)) {
+        Logger.error(`Socket ${name} failed:`, error);
+        reportError(error, { socketEvent: name });
+      }
       respond({ ok: false, error: message });
     }
   };
