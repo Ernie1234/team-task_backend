@@ -35,6 +35,10 @@ Backend items from the [main roadmap](https://github.com/Ernie1234/team-task_fro
 - [x] Make tour guide tutorial for new account
 - [X] Switching to using BetterAuth instead of the regular login.
 - [ ] Deploy with a seeded demo account
+- [ ] Monorepo with the web app and mobile app (Bun workspaces + Turborepo), shared Zod schemas and types
+- [ ] Move from MongoDB to PostgreSQL with Drizzle ORM (Better Auth Drizzle adapter, data migration script)
+- [ ] Better Auth bearer plugin for the React Native app
+- [ ] Better Auth JWT plugin + JWKS endpoint for the Go and Python services
 - [ ] Redis secondary storage for faster session lookups
 - [ ] Socket.IO Redis adapter for several instances
 - [ ] File storage on S3 / Cloudflare R2 with signed URLs
