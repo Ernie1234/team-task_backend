@@ -1,6 +1,8 @@
-import type { Store } from "express-session";
 import mongoose from "mongoose";
 import AccountModel from "@/models/account-model";
+import { AuthAccountModel, AuthSessionModel } from "@/models/auth-models";
+import { auth } from "@/config/auth";
+import { APIError } from "better-auth/api";
 import CalendarConnectionModel from "@/models/calendar-connection-model";
 import EventModel from "@/models/event-model";
 import MemberModel from "@/models/member-model";
@@ -8,9 +10,7 @@ import NoteModel from "@/models/note-model";
 import NotificationModel from "@/models/notification-model";
 import TaskModel from "@/models/task-model";
 import UserModel from "@/models/user-model";
-import UserSessionModel from "@/models/user-session-model";
 import WorkspaceModel from "@/models/workspace-model";
-import { ProviderEnum } from "@/enums/account-provider-enum";
 import { getSocketService } from "@/config/socket.config";
 import { disconnectService } from "@/services/calendar-service";
 import { deleteWorkspaceByIdService } from "@/services/workspace-service";
@@ -26,9 +26,9 @@ const findUser = async (userId: string, withPassword = false) => {
 
 /** What the Account page shows */
 export const getAccountService = async (userId: string) => {
-  const [user, accounts] = await Promise.all([
-    UserModel.findById(userId).select("+password").lean(),
-    AccountModel.find({ userId }).select("provider createdAt").lean(),
+  const [user, logins] = await Promise.all([
+    UserModel.findById(userId).lean(),
+    AuthAccountModel.find({ userId: new mongoose.Types.ObjectId(userId) }).select("providerId").lean(),
   ]);
   if (!user) throw new NotFoundException("User not found");
   return {
@@ -37,8 +37,8 @@ export const getAccountService = async (userId: string) => {
       name: user.name ?? "",
       email: user.email,
       profilePicture: user.profilePicture ?? null,
-      hasPassword: !!user.password,
-      providers: accounts.map((a) => a.provider),
+      hasPassword: logins.some((l) => l.providerId === "credential"),
+      providers: logins.map((l) => (l.providerId === "credential" ? "EMAIL" : l.providerId.toUpperCase())),
       createdAt: user.createdAt,
     },
   };
@@ -53,21 +53,23 @@ export const updateProfileService = async (userId: string, data: UpdateProfileTy
 };
 
 /** Set a password (Google-only accounts) or change it (needs the current one) */
-export const changePasswordService = async (userId: string, currentPassword: string | undefined, newPassword: string) => {
-  const user = await findUser(userId, true);
-  if (user.password) {
-    if (!currentPassword || !(await user.comparePassword(currentPassword))) {
-      throw new UnauthorizedException("Your current password isn't right");
+export const changePasswordService = async (userId: string, headers: Headers, currentPassword: string | undefined, newPassword: string) => {
+  const hasPassword = !!(await AuthAccountModel.exists({ userId: new mongoose.Types.ObjectId(userId), providerId: "credential" }));
+  try {
+    if (hasPassword) {
+      if (!currentPassword) throw new UnauthorizedException("Enter your current password");
+      await auth.api.changePassword({ body: { currentPassword, newPassword, revokeOtherSessions: false }, headers });
+    } else {
+      // Google-only account: add email + password sign-in
+      await auth.api.setPassword({ body: { newPassword }, headers });
     }
-    if (await user.comparePassword(newPassword)) throw new BadRequestException("Choose a password you haven't used here before");
-  }
-  user.password = newPassword; // hashed by the model's pre-save hook
-  await user.save();
-
-  // Lets people who signed up with Google also sign in with email + password
-  const hasEmailLogin = await AccountModel.exists({ userId, provider: ProviderEnum.EMAIL });
-  if (!hasEmailLogin) {
-    await AccountModel.create({ userId, provider: ProviderEnum.EMAIL, providerId: user.email });
+  } catch (error) {
+    if (error instanceof APIError) {
+      const message = String(error.body?.message ?? error.message ?? "");
+      if (/invalid password/i.test(message)) throw new UnauthorizedException("Your current password isn't right");
+      throw new BadRequestException(message || "Couldn't save your password");
+    }
+    throw error;
   }
   return { hasPassword: true };
 };
@@ -80,50 +82,43 @@ const describe = (ua: string) => {
   return { os, browser };
 };
 
-const storeHas = (store: Store, sid: string) =>
-  new Promise<boolean>((resolve) => store.get(sid, (err, session) => resolve(!err && !!session)));
-const storeDestroy = (store: Store, sid: string) => new Promise<void>((resolve) => store.destroy(sid, () => resolve()));
-
-export const listSessionsService = async (userId: string, currentSid: string, store: Store) => {
-  const records = await UserSessionModel.find({ user: userId }).select("+sessionId").sort({ lastActiveAt: -1 }).lean();
-  const live = [];
-  for (const record of records) {
-    // Expired or signed out elsewhere: tidy up
-    if (record.sessionId !== currentSid && !(await storeHas(store, record.sessionId))) {
-      await UserSessionModel.deleteOne({ _id: record._id });
-      continue;
-    }
-    live.push({
-      _id: String(record._id),
-      ...describe(record.userAgent),
-      ip: record.ip,
-      lastActiveAt: record.lastActiveAt,
-      createdAt: record.createdAt,
-      current: record.sessionId === currentSid,
-    });
-  }
-  return { sessions: live };
+/** Signed-in devices = live Better Auth sessions */
+export const listSessionsService = async (userId: string, currentSessionId: string | undefined) => {
+  const sessions = await AuthSessionModel.find({ userId: new mongoose.Types.ObjectId(userId), expiresAt: { $gt: new Date() } })
+    .sort({ updatedAt: -1 })
+    .lean();
+  return {
+    sessions: sessions.map((s) => ({
+      _id: String(s._id),
+      ...describe(s.userAgent ?? ""),
+      ip: s.ipAddress ?? "",
+      lastActiveAt: s.updatedAt ?? s.createdAt,
+      createdAt: s.createdAt,
+      current: String(s._id) === currentSessionId,
+    })),
+  };
 };
 
-const endSession = async (store: Store, sid: string) => {
-  await storeDestroy(store, sid);
-  getSocketService()?.disconnectSession(sid);
+const endSessions = async (sessionIds: string[]) => {
+  if (!sessionIds.length) return;
+  await AuthSessionModel.deleteMany({ _id: { $in: sessionIds.map((id) => new mongoose.Types.ObjectId(id)) } });
+  // Their open tabs drop off straight away; their cached sign-in expires within 2 minutes
+  sessionIds.forEach((id) => getSocketService()?.disconnectSession(id));
 };
 
-export const revokeSessionService = async (userId: string, sessionRecordId: string, currentSid: string, store: Store) => {
-  if (!mongoose.isValidObjectId(sessionRecordId)) throw new NotFoundException("Device not found");
-  const record = await UserSessionModel.findOne({ _id: sessionRecordId, user: userId }).select("+sessionId");
-  if (!record) throw new NotFoundException("Device not found");
-  if (record.sessionId === currentSid) throw new BadRequestException("Use Log out to sign out of this device");
-  await endSession(store, record.sessionId);
-  await UserSessionModel.deleteOne({ _id: record._id });
+export const revokeSessionService = async (userId: string, sessionId: string, currentSessionId: string | undefined) => {
+  if (!mongoose.isValidObjectId(sessionId)) throw new NotFoundException("Device not found");
+  if (sessionId === currentSessionId) throw new BadRequestException("Use Log out to sign out of this device");
+  const session = await AuthSessionModel.findOne({ _id: sessionId, userId: new mongoose.Types.ObjectId(userId) }).select("_id").lean();
+  if (!session) throw new NotFoundException("Device not found");
+  await endSessions([String(session._id)]);
 };
 
-export const revokeOtherSessionsService = async (userId: string, currentSid: string, store: Store) => {
-  const records = await UserSessionModel.find({ user: userId, sessionId: { $ne: currentSid } }).select("+sessionId");
-  for (const record of records) await endSession(store, record.sessionId);
-  await UserSessionModel.deleteMany({ user: userId, sessionId: { $ne: currentSid } });
-  return { count: records.length };
+export const revokeOtherSessionsService = async (userId: string, currentSessionId: string | undefined) => {
+  const others = await AuthSessionModel.find({ userId: new mongoose.Types.ObjectId(userId) }).select("_id").lean();
+  const ids = others.map((s) => String(s._id)).filter((id) => id !== currentSessionId);
+  await endSessions(ids);
+  return { count: ids.length };
 };
 
 /* ---------------------------------------------------------------- delete */
@@ -132,7 +127,7 @@ export const revokeOtherSessionsService = async (userId: string, currentSid: str
  * Deletes the account. Workspaces you own with other members must be handed over
  * or emptied first. Your messages stay in conversations under "Deleted user".
  */
-export const deleteAccountService = async (userId: string, confirmEmail: string, store: Store) => {
+export const deleteAccountService = async (userId: string, confirmEmail: string, currentSessionId: string | undefined) => {
   const user = await findUser(userId);
   if (user.email.toLowerCase() !== confirmEmail) throw new BadRequestException("Type your email exactly to confirm");
 
@@ -160,6 +155,7 @@ export const deleteAccountService = async (userId: string, confirmEmail: string,
     TaskModel.updateMany({ assignedTo: userId }, { $set: { assignedTo: null } }),
     MemberModel.deleteMany({ userId }),
     AccountModel.deleteMany({ userId }),
+    AuthAccountModel.deleteMany({ userId: new mongoose.Types.ObjectId(userId) }),
   ]);
   forgetMemberships(userId);
 
@@ -180,7 +176,7 @@ export const deleteAccountService = async (userId: string, confirmEmail: string,
     }
   );
 
-  const sessions = await UserSessionModel.find({ user: userId }).select("+sessionId");
-  for (const s of sessions) await endSession(store, s.sessionId);
-  await UserSessionModel.deleteMany({ user: userId });
+  // Sign out every other device; the caller signs this one out (clears its cookie)
+  const others = await AuthSessionModel.find({ userId: new mongoose.Types.ObjectId(userId) }).select("_id").lean();
+  await endSessions(others.map((s) => String(s._id)).filter((id) => id !== currentSessionId));
 };

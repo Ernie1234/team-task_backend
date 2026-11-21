@@ -25,13 +25,12 @@ import {
   updateEventSchema,
 } from "@/validation/calendar-validation";
 import Logger from "@/utils/logger";
+import { clearCookie, readSignedCookie, setSignedCookie } from "@/utils/signed-cookie";
 import mongoose from "mongoose";
 
-declare module "express-session" {
-  interface SessionData {
-    calendarOAuth?: { state: string; userId: string; workspaceId: string | null; createdAt: number };
-  }
-}
+type PendingConnect = { state: string; userId: string; workspaceId: string | null; createdAt: number };
+const STATE_COOKIE = "tt_calendar_oauth";
+const STATE_PATH = `${config.BASE_PATH}/calendar`;
 
 const userIdOf = (req: Request) => String(req.user?._id);
 const OAUTH_TTL_MS = 10 * 60_000;
@@ -52,14 +51,15 @@ export const connectGoogleController = asyncHandler(async (req: Request, res: Re
   if (workspaceId) await getMemberRoleInWorkspace(userId, workspaceId);
 
   const state = randomBytes(24).toString("base64url");
-  req.session.calendarOAuth = { state, userId, workspaceId, createdAt: Date.now() };
-  req.session.save(() => res.redirect(buildGoogleAuthUrl(state, (req.user as { email?: string } | undefined)?.email)));
+  // Remember this request for the callback (signed, expires with the request)
+  setSignedCookie(res, STATE_COOKIE, { state, userId, workspaceId, createdAt: Date.now() } satisfies PendingConnect, { maxAgeMs: OAUTH_TTL_MS, path: STATE_PATH });
+  return res.redirect(buildGoogleAuthUrl(state, (req.user as { email?: string } | undefined)?.email));
 });
 
 /** Step 2: Google sends the user back here with a one-time code */
 export const googleCallbackController = asyncHandler(async (req: Request, res: Response) => {
-  const pending = req.session.calendarOAuth;
-  delete req.session.calendarOAuth;
+  const pending = readSignedCookie<PendingConnect>(req, STATE_COOKIE);
+  clearCookie(res, STATE_COOKIE, STATE_PATH);
   const workspaceId = pending?.workspaceId ?? null;
   const fail = (reason: string) => res.redirect(calendarPage(workspaceId, { calendar: "error", reason }));
 

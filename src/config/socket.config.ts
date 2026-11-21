@@ -1,7 +1,7 @@
 import { Server as HTTPServer } from "http";
 import { Server as SocketIOServer, Socket } from "socket.io";
-import type { RequestHandler } from "express";
-import passport from "passport";
+import { fromNodeHeaders } from "better-auth/node";
+import { auth } from "@/config/auth";
 import { config } from "./app.config";
 import Logger from "@/utils/logger";
 import UserModel, { type UserDocument } from "@/models/user-model";
@@ -12,6 +12,8 @@ export interface AuthenticatedSocket extends Socket {
   userId?: string;
   workspaceId?: string;
   user?: any;
+  /** Better Auth session id, so "log out of this device" can drop its sockets */
+  sessionId?: string;
 }
 
 export type PresencePayload = {
@@ -35,7 +37,7 @@ export class SocketService {
   private presenceQueue: Map<string, Promise<void>> = new Map();
   private isShuttingDown = false;
 
-  constructor(server: HTTPServer, sessionMiddleware: RequestHandler) {
+  constructor(server: HTTPServer) {
     this.io = new SocketIOServer(server, {
       cors: {
         origin: config.FRONTEND_ORIGIN,
@@ -46,48 +48,26 @@ export class SocketService {
       pingTimeout: 5000,
     });
 
-    this.setupMiddleware(sessionMiddleware);
+    this.setupMiddleware();
     this.setupEventHandlers();
     socketServiceInstance = this;
   }
 
-  private setupMiddleware(sessionMiddleware: RequestHandler) {
-    // Use the same session middleware from Express
-    this.io.use((socket, next) => {
-      sessionMiddleware(socket.request as any, {} as any, next as any);
-    });
-
-    // Passport middleware for Socket.IO
-    this.io.use((socket, next) => {
-      passport.initialize()(socket.request as any, {} as any, next as any);
-    });
-
-    this.io.use((socket, next) => {
-      passport.session()(socket.request as any, {} as any, next as any);
-    });
-
-    // Authentication middleware
+  private setupMiddleware() {
+    // Authentication: the same Better Auth session cookie the REST API uses
     this.io.use(async (socket: AuthenticatedSocket, next) => {
       try {
         const req = socket.request as any;
-        
-        // Log session information for debugging
-        Logger.info('Socket connection attempt:', {
-          hasSession: !!req.session,
-          sessionID: req.sessionID,
-          hasPassport: !!req.session?.passport,
-          hasUser: !!req.user,
-          cookies: req.headers.cookie ? 'present' : 'missing'
-        });
-        
+        const result = await auth.api.getSession({ headers: fromNodeHeaders(socket.request.headers) });
+        if (result) {
+          req.user = { ...result.user, _id: result.user.id };
+          socket.sessionId = result.session.id;
+        }
+
         const user = req.user;
-        
+
         if (!user || !user._id) {
-          Logger.warn("Socket connection attempted without authentication", {
-            hasSession: !!req.session,
-            sessionID: req.sessionID,
-            passportUser: req.session?.passport?.user
-          });
+          Logger.warn("Socket connection attempted without a valid session");
           return next(new Error("Authentication required"));
         }
 
@@ -270,7 +250,7 @@ export class SocketService {
   /** Drop live connections that belong to a signed-out session (log out of a device) */
   public disconnectSession(sessionId: string) {
     for (const socket of this.io.sockets.sockets.values()) {
-      if ((socket.request as { sessionID?: string }).sessionID === sessionId) socket.disconnect(true);
+      if ((socket as AuthenticatedSocket).sessionId === sessionId) socket.disconnect(true);
     }
   }
 

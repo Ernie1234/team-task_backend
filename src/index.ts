@@ -4,7 +4,7 @@ import { createServer } from "http";
 import type { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
-import session from "express-session";
+import { toNodeHandler } from "better-auth/node";
 
 import { config } from "./config/app.config";
 import Logger from "./utils/logger";
@@ -13,14 +13,13 @@ import { connectDB, disconnectDB } from "./config/db";
 import { errorHandler } from "./middlewares/errorHandlerMiddleware";
 import { asyncHandler } from "./middlewares/asyncHandlerMiddleware";
 import { BadRequestException } from "./utils/appError";
-import passport from "passport";
-import "@/config/passport-config";
+import { auth, AUTH_BASE_PATH, authMongoClient } from "./config/auth";
+import { migrateLegacyAuth } from "./services/auth-service";
 import apiRouter from "./routes";
 import SocketService from "./config/socket.config";
-import { isAuthenticated } from "./middlewares/isAuthenticatedMiddleware";
+import { attachSession, isAuthenticated } from "./middlewares/isAuthenticatedMiddleware";
 import { IMAGE_EXTENSIONS, UPLOAD_ROOT } from "./config/uploads";
 import { startCalendarJobs, stopCalendarJobs } from "./services/calendar-jobs";
-import { trackSession } from "./middlewares/trackSessionMiddleware";
 
 const app = express();
 const server = createServer(app);
@@ -29,13 +28,9 @@ const BASE_PATH = config.BASE_PATH;
 // Initialize Socket.IO service
 let socketService: SocketService;
 
-// Notes carry whole editor documents, so allow bigger bodies than the 100 KB default
-app.use(express.json({ limit: "2mb" }));
-app.use(express.urlencoded({ extended: true }));
 app.use(helmet());
 app.use(morganMiddleware);
-
-// CORS must be before session to allow credentials
+// CORS first, so the web app (another origin) can send cookies
 app.use(
   cors({
     origin: config.FRONTEND_ORIGIN,
@@ -43,24 +38,16 @@ app.use(
   })
 );
 
-// Create session middleware to be shared with Socket.IO
-export const sessionMiddleware = session({
-  secret: config.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    maxAge: 24 * 60 * 60 * 1000,
-    secure: config.NODE_ENV === "production",
-    httpOnly: true,
-    sameSite: "lax",
-  },
-});
+// Better Auth: sign-up, sign-in (email + Google), email codes, sessions.
+// Mounted before express.json() because it reads the raw request body itself.
+app.all(`${AUTH_BASE_PATH}/{*any}`, toNodeHandler(auth));
 
-app.use(sessionMiddleware);
-app.use(passport.initialize());
-app.use(passport.session());
-// Devices list (Account settings): remember which sessions are signed in
-app.use(trackSession);
+// Notes carry whole editor documents, so allow bigger bodies than the 100 KB default
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+// Who is calling: sets req.user / req.authSession from the Better Auth session cookie
+app.use(attachSession);
 
 app.get(
   "/",
@@ -68,9 +55,6 @@ app.get(
     res.status(200).json({
       message: "Team Task API is running",
       authenticated: !!req.user,
-      session: req.session ? 'present' : 'missing',
-      sessionID: req.sessionID,
-      user: req.user ? { id: (req.user as any)._id, name: (req.user as any).name } : null,
     });
   })
 );
@@ -103,9 +87,12 @@ app.use(errorHandler);
 const startServer = async () => {
   try {
     await connectDB();
+    await authMongoClient.connect();
+    // Logins created before Better Auth keep working (adds only what's missing)
+    await migrateLegacyAuth().catch((error) => Logger.error("Couldn't move existing logins to Better Auth:", error));
     
     // Initialize Socket.IO service with session middleware
-    socketService = new SocketService(server, sessionMiddleware);
+    socketService = new SocketService(server);
     await socketService.resetStalePresence();
     
     server.listen(config.PORT, () => {
@@ -163,8 +150,8 @@ const shutdown = async (signal: string) => {
     await httpClosed;
     Logger.info("🔒 HTTP and Socket.IO server closed");
 
-    // 2. Close the database last, after in-flight requests have finished
-    await disconnectDB();
+    // 2. Close the databases last, after in-flight requests have finished
+    await Promise.all([disconnectDB(), authMongoClient.close()]);
     Logger.info("🔌 Database connection closed");
 
     Logger.info("✅ Shutdown complete");

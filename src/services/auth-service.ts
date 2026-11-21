@@ -1,213 +1,90 @@
+import mongoose from "mongoose";
 import { ProviderEnum } from "@/enums/account-provider-enum";
 import { Roles } from "@/enums/role-enum";
-import { sendVerificationEmail, sendWelcomeEmail } from "@/mails/emails";
 import AccountModel from "@/models/account-model";
+import { AuthAccountModel } from "@/models/auth-models";
 import MemberModel from "@/models/member-model";
 import RoleModel from "@/models/role-model";
 import UserModel from "@/models/user-model";
 import WorkspaceModel from "@/models/workspace-model";
-import {
-  BadRequestException,
-  NotFoundException,
-  UnauthorizedException,
-} from "@/utils/appError";
-import { generateVerificationToken } from "@/utils/generate-functions";
 import Logger from "@/utils/logger";
-import type { TRegisterUser } from "@/validation/auth-validation";
-import mongoose from "mongoose";
 
-export const loginOrCreateAccount = async (data: {
-  provider: string;
-  displayName: string;
-  providerId: string;
-  picture?: string;
-  email?: string;
-}) => {
-  const { providerId, provider, displayName, picture, email } = data;
+/**
+ * A new account (email sign-up or first Google sign-in) gets its own workspace
+ * with the user as Owner. Called by Better Auth after it creates the user.
+ */
+export const provisionNewUser = async (userId: string, name: string) => {
+  const user = await UserModel.findById(userId).select("currentWorkspace");
+  if (!user || user.currentWorkspace) return;
 
-  const session = await mongoose.startSession();
-  try {
-    session.startTransaction();
-    let user = await UserModel.findOne({ email }).session(session);
-    if (!user) {
-      user = new UserModel({
-        email,
-        name: displayName,
-        profilePicture: picture || null,
-        isVerified: true,
-      });
-      await user.save({ session });
-
-      const account = new AccountModel({
-        userId: user._id,
-        provider: provider,
-        providerId: providerId,
-      });
-      await account.save({ session });
-
-      const workspace = new WorkspaceModel({
-        name: `${user.name} workspace`,
-        description: `My first team Workspace`,
-        owner: user._id,
-      });
-      await workspace.save({ session });
-
-      const ownerRole = await RoleModel.findOne({
-        name: Roles.OWNER,
-      }).session(session);
-      if (!ownerRole) {
-        throw new NotFoundException("Owner role not found!");
-      }
-      const member = new MemberModel({
-        userId: user._id,
-        workspaceId: workspace._id,
-        role: ownerRole._id,
-        joinedAt: new Date(),
-      });
-      await member.save({
-        session,
-      });
-
-      user.currentWorkspace = workspace._id as mongoose.Types.ObjectId;
-      await user.save({ session });
-    }
-    await session.commitTransaction();
-    session.endSession();
-    return { user };
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    Logger.error("An error occurred here: ", error);
-    throw error;
-  }
-};
-
-export const registerUserService = async (body: TRegisterUser) => {
-  const { email, name, password } = body;
-  const session = await mongoose.startSession();
-
-  try {
-    session.startTransaction();
-    const existingUser = await UserModel.findOne({ email }).session(session);
-    if (existingUser) {
-      Logger.info("Email already exist!");
-      throw new BadRequestException("Invalid credentials!");
-    }
-
-    const verificationToken = generateVerificationToken();
-    const verificationTokenExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-    const user = new UserModel({
-      email,
-      name,
-      password,
-      isVerified: false,
-      verificationToken,
-      verificationTokenExpiresAt,
-    });
-    await user.save({ session });
-
-    const account = new AccountModel({
-      userId: user._id,
-      provider: ProviderEnum.EMAIL,
-      providerId: email,
-    });
-    await account.save({ session });
-
-    const workspace = new WorkspaceModel({
-      name: `${user.name} workspace`,
-      description: `My first team Workspace`,
-      owner: user._id,
-    });
-    await workspace.save({ session });
-
-    const ownerRole = await RoleModel.findOne({
-      name: Roles.OWNER,
-    }).session(session);
-    if (!ownerRole) {
-      throw new NotFoundException("Owner role not found!");
-    }
-    const member = new MemberModel({
-      userId: user._id,
-      workspaceId: workspace._id,
-      role: ownerRole._id,
-      joinedAt: new Date(),
-    });
-    await member.save({
-      session,
-    });
-
-    user.currentWorkspace = workspace._id as mongoose.Types.ObjectId;
-    await user.save({ session });
-
-    await sendVerificationEmail(email, verificationToken);
-
-    Logger.info("User Registered successfully: ", user);
-
-    await session.commitTransaction();
-    session.endSession();
-    return { user };
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    Logger.error("An error occurred here: ", error);
-    throw error;
-  }
-};
-
-export const verifyUserService = async ({
-  email,
-  password,
-  provider = ProviderEnum.EMAIL,
-}: {
-  email: string;
-  password: string;
-  provider?: string;
-}) => {
-  const account = await AccountModel.findOne({ provider, providerId: email });
-  if (!account) {
-    throw new NotFoundException("Invalid email or password");
-  }
-  Logger.info("Account found: ", account);
-  Logger.info("Fetching user for the account: ", account.userId);
-  const user = await UserModel.findById(account.userId);
-  Logger.info("User found from account: ", user);
-  if (!user) {
-    throw new NotFoundException("User not found for the given account!");
+  const ownerRole = await RoleModel.findOne({ name: Roles.OWNER }).select("_id").lean();
+  if (!ownerRole) {
+    Logger.error("Owner role not found. Run `bun run seed` to create the default roles.");
+    return;
   }
 
-  const isPasswordMatch = await user.comparePassword(password);
-  if (!isPasswordMatch) {
-    throw new UnauthorizedException("Invalid email or password");
-  }
-
-  return user.omitPassword();
-};
-
-export const verifyEmailService = async ({
-  email,
-  token,
-}: {
-  email: string;
-  token: string;
-}) => {
-  const user = await UserModel.findOne({
-    email,
-    verificationToken: token,
-    verificationTokenExpiresAt: { $gt: new Date() },
+  const workspace = await WorkspaceModel.create({
+    name: `${name || "My"} workspace`,
+    description: "My first team workspace",
+    owner: user._id,
   });
+  await MemberModel.create({ userId: user._id, workspaceId: workspace._id, role: ownerRole._id, joinedAt: new Date() });
+  await UserModel.updateOne(
+    { _id: user._id },
+    { $set: { currentWorkspace: workspace._id, isActive: true, isOnline: false, lastSeen: null } }
+  );
+};
 
-  if (!user) {
-    throw new BadRequestException("Invalid or expired verification token.");
+/** Deleted accounts are kept as "Deleted user" with isActive=false and can't sign in */
+export const isUserActive = async (userId: string) => {
+  if (!mongoose.isValidObjectId(userId)) return false;
+  const user = await UserModel.findById(userId).select("isActive").lean();
+  return !!user && user.isActive !== false;
+};
+
+/**
+ * One-time move of logins made before Better Auth (passport) into Better Auth's
+ * accounts collection. Safe to run on every start: it only adds what's missing.
+ * - email logins keep their bcrypt hash (Better Auth is configured to verify bcrypt)
+ * - Google logins keep their Google account id
+ */
+export const migrateLegacyAuth = async () => {
+  const legacy = await AccountModel.find({ provider: { $in: [ProviderEnum.EMAIL, ProviderEnum.GOOGLE] } })
+    .select("userId provider providerId createdAt")
+    .lean();
+  if (!legacy.length) return { migrated: 0 };
+
+  const users = new Map(
+    (await UserModel.find({ _id: { $in: legacy.map((a) => a.userId) } }).select("+password").lean()).map((u) => [String(u._id), u])
+  );
+
+  const now = new Date();
+  const ops = [];
+  for (const account of legacy) {
+    const user = users.get(String(account.userId));
+    if (!user || user.isActive === false) continue;
+    const isEmail = account.provider === ProviderEnum.EMAIL;
+    if (isEmail && !user.password) continue;
+    const providerId = isEmail ? "credential" : "google";
+    ops.push({
+      updateOne: {
+        filter: { userId: user._id, providerId },
+        update: {
+          $setOnInsert: {
+            userId: user._id,
+            providerId,
+            accountId: isEmail ? String(user._id) : account.providerId,
+            ...(isEmail ? { password: user.password } : {}),
+            createdAt: account.createdAt ?? now,
+            updatedAt: now,
+          },
+        },
+        upsert: true,
+      },
+    });
   }
-
-  user.isVerified = true;
-  user.verificationToken = undefined;
-  user.verificationTokenExpiresAt = undefined;
-  await user.save();
-
-  // Send welcome email after successful verification
-  if (user.email && user.name) {
-    await sendWelcomeEmail(user.email, user.name);
-  }
+  if (!ops.length) return { migrated: 0 };
+  const result = await AuthAccountModel.bulkWrite(ops, { ordered: false });
+  if (result.upsertedCount) Logger.info(`🔐 Moved ${result.upsertedCount} existing login(s) to Better Auth`);
+  return { migrated: result.upsertedCount };
 };

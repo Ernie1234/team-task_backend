@@ -2,6 +2,7 @@ import { config } from "@/config/app.config";
 import Logger from "@/utils/logger";
 import { isMailEnabled, mailtrapClient, sender } from "./mailtrap";
 import {
+  passwordResetCodeTemplate,
   passwordResetRequestTemplate,
   passwordResetSuccessTemplate,
   verificationEmailTemplate,
@@ -160,4 +161,19 @@ export const sendWorkspaceInvitationEmail = async (
       `Error sending workspace invitation email: ${(error as Error).message}`
     );
   }
+};
+
+/** Code for "Forgot password?" (sent by Better Auth's email OTP plugin) */
+export const sendPasswordResetCodeEmail = async (email: string, code: string): Promise<void> => {
+  if (!isMailEnabled) {
+    Logger.warn(`[mail disabled] Password reset code for ${email}: ${code}`);
+    return;
+  }
+  await mailtrapClient.send({
+    from: sender,
+    to: [{ email }],
+    subject: "Your Team Task password reset code",
+    html: passwordResetCodeTemplate.replace("{resetCode}", code),
+    category: "Password Reset",
+  });
 };

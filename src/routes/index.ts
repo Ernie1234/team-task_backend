@@ -1,6 +1,5 @@
 import { Router } from "express";
 
-import authRoute from "./auth-route";
 import userRoute from "./user-route";
 import { isAuthenticated } from "@/middlewares/isAuthenticatedMiddleware";
 import workspaceRoute from "./workspace-route";
@@ -15,7 +14,7 @@ import calendarRoute from "./calendar-route";
 
 const apiRouter: Router = Router();
 
-apiRouter.use("/auth", authRoute);
+// Sign-in, sign-up and sessions are handled by Better Auth at /api/v1/auth (see index.ts)
 apiRouter.use("/user", isAuthenticated, userRoute);
 apiRouter.use("/workspace", isAuthenticated, workspaceRoute);
 apiRouter.use("/members", isAuthenticated, membersRoute);

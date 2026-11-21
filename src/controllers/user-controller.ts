@@ -12,6 +12,8 @@ import {
   updateProfileService,
 } from "@/services/account-service";
 import type { Request, Response } from "express";
+import { fromNodeHeaders } from "better-auth/node";
+import { auth } from "@/config/auth";
 
 export const getCurrentUserController = asyncHandler(
   async (req: Request, res: Response) => {
@@ -53,32 +55,31 @@ export const updateProfileController = asyncHandler(async (req: Request, res: Re
 
 export const changePasswordController = asyncHandler(async (req: Request, res: Response) => {
   const { currentPassword, newPassword } = changePasswordSchema.parse(req.body ?? {});
-  await changePasswordService(String(req.user?._id), currentPassword, newPassword);
+  await changePasswordService(String(req.user?._id), fromNodeHeaders(req.headers), currentPassword, newPassword);
   return res.status(HTTPSTATUS.OK).json({ status: true, message: "Password saved" });
 });
 
 export const listSessionsController = asyncHandler(async (req: Request, res: Response) => {
-  const { sessions } = await listSessionsService(String(req.user?._id), req.sessionID, req.sessionStore);
+  const { sessions } = await listSessionsService(String(req.user?._id), req.authSession?.id);
   return res.status(HTTPSTATUS.OK).json({ status: true, message: "Devices", sessions });
 });
 
 export const revokeSessionController = asyncHandler(async (req: Request, res: Response) => {
-  await revokeSessionService(String(req.user?._id), String(req.params.sessionId), req.sessionID, req.sessionStore);
+  await revokeSessionService(String(req.user?._id), String(req.params.sessionId), req.authSession?.id);
   return res.status(HTTPSTATUS.OK).json({ status: true, message: "Logged out of that device" });
 });
 
 export const revokeOtherSessionsController = asyncHandler(async (req: Request, res: Response) => {
-  const { count } = await revokeOtherSessionsService(String(req.user?._id), req.sessionID, req.sessionStore);
+  const { count } = await revokeOtherSessionsService(String(req.user?._id), req.authSession?.id);
   return res.status(HTTPSTATUS.OK).json({ status: true, message: `Logged out of ${count} other device${count === 1 ? "" : "s"}`, count });
 });
 
 export const deleteAccountController = asyncHandler(async (req: Request, res: Response) => {
   const { confirmEmail } = deleteAccountSchema.parse(req.body ?? {});
-  await deleteAccountService(String(req.user?._id), confirmEmail, req.sessionStore);
-  req.logout(() => {
-    req.session.destroy(() => {
-      res.clearCookie("connect.sid");
-      res.status(HTTPSTATUS.OK).json({ status: true, message: "Account deleted" });
-    });
-  });
+  await deleteAccountService(String(req.user?._id), confirmEmail, req.authSession?.id);
+  // Sign this browser out too (removes the session and clears its cookies)
+  const { headers } = await auth.api.signOut({ headers: fromNodeHeaders(req.headers), returnHeaders: true });
+  const cookies = headers.getSetCookie?.() ?? [];
+  if (cookies.length) res.setHeader("Set-Cookie", cookies);
+  return res.status(HTTPSTATUS.OK).json({ status: true, message: "Account deleted" });
 });

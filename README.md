@@ -10,7 +10,7 @@ The web app lives in [team-task_frontend](https://github.com/Ernie1234/team-task
 
 Unticked items are on the [roadmap](#roadmap).
 
-- [x] **Auth:** email and password (bcrypt) with email verification, Google OAuth sign-in, cookie sessions
+- [x] **Auth (Better Auth):** email and password with 6-digit email codes, Google sign-in with account linking, password reset by code, 30-day sessions stored in MongoDB that renew while in use; existing bcrypt passwords and Google logins carried over automatically
 - [x] **Workspaces & RBAC:** Owner / Admin / Member roles with permission checks, invite links and email invites, membership cache
 - [x] **Projects & tasks:** CRUD, subtasks, completion dates, filtering, sorting, search (regex-safe), pagination, per-project analytics
 - [x] **Dashboard API:** KPIs, 14-day completion trend (time-zone aware), status and priority breakdown, team workload
@@ -28,8 +28,9 @@ Unticked items are on the [roadmap](#roadmap).
 
 Backend items from the [main roadmap](https://github.com/Ernie1234/team-task_frontend#roadmap).
 
+- [ ] Make tour guide tutorial for new account
 - [ ] Deploy with a seeded demo account
-- [ ] Redis-backed sessions
+- [ ] Redis secondary storage for faster session lookups
 - [ ] Socket.IO Redis adapter for several instances
 - [ ] File storage on S3 / Cloudflare R2 with signed URLs
 - [ ] CI with GitHub Actions; unit and integration tests in the repo
@@ -47,11 +48,11 @@ Backend items from the [main roadmap](https://github.com/Ernie1234/team-task_fro
 
 ## API overview
 
-All routes are under `/api/v1`. Everything except `/auth` needs a signed-in session cookie.
+All routes are under `/api/v1`. Everything except `/auth` needs a signed-in session cookie (`team-task.session_token`).
 
 | Area | Base path | Highlights |
 | --- | --- | --- |
-| Auth | `/auth` | `register`, `login`, `logout`, `verify-email`, `google`, `google/callback` |
+| Auth ([Better Auth](https://better-auth.com)) | `/auth` | `sign-up/email`, `sign-in/email`, `sign-in/social`, `sign-out`, `get-session`, `email-otp/verify-email`, `email-otp/send-verification-otp`, `email-otp/request-password-reset`, `email-otp/reset-password`, `callback/google` |
 | User & account | `/user` | `current`, `profile`, `password`, `sessions`, `appearance`, `account`, `DELETE /` |
 | Workspaces | `/workspace` | create, update, delete, members, change role, invite by email, analytics, `dashboard/:id` |
 | Members | `/members` | join a workspace with an invite code |
@@ -82,10 +83,11 @@ bun run dev       # http://localhost:3000
 | --- | --- |
 | `PORT`, `NODE_ENV` | Server port and mode |
 | `MONGO_URI` | MongoDB connection string |
-| `SESSION_SECRET`, `SESSION_EXPIRES_IN` | Cookie session signing and lifetime |
+| `BETTER_AUTH_SECRET` | Signs sign-in cookies (falls back to `SESSION_SECRET`). Generate with `openssl rand -base64 32` |
+| `BETTER_AUTH_URL` _(optional)_ | Public URL of this API; defaults to the origin of `GOOGLE_CALLBACK_URL` |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OAuth client (sign-in and Calendar) |
-| `GOOGLE_CALLBACK_URL` | Sign-in callback, e.g. `http://localhost:3000/api/v1/auth/google/callback` |
-| `FRONTEND_ORIGIN`, `FRONTEND_GOOGLE_CALLBACK_URL` | Web app origin and its Google callback page |
+| `GOOGLE_CALLBACK_URL` | Google sign-in redirect URI: `http://localhost:3000/api/v1/auth/callback/google` |
+| `FRONTEND_ORIGIN` | Web app origin (trusted for sign-in redirects and CORS) |
 | `MAILTRAP_TOKEN`, `MAILTRAP_ENDPOINT`, `MAILTRAP_TEMPLATE_UUID` | Transactional email |
 | `GOOGLE_CALENDAR_CALLBACK_URL` _(optional)_ | Calendar OAuth callback; defaults to `<API origin>/api/v1/calendar/google/callback` |
 | `CALENDAR_TOKEN_KEY` _(optional)_ | Key for encrypting calendar tokens; defaults to one derived from `SESSION_SECRET` |
@@ -96,21 +98,21 @@ In the Google Cloud console, on the same OAuth client used for sign-in:
 
 1. Enable the **Google Calendar API**.
 2. Under Data Access, add the scope `https://www.googleapis.com/auth/calendar.events`.
-3. Add the redirect URI `http://localhost:3000/api/v1/calendar/google/callback`.
+3. Add the redirect URIs `http://localhost:3000/api/v1/auth/callback/google` (sign-in) and `http://localhost:3000/api/v1/calendar/google/callback` (Calendar).
 4. While the app is in Testing mode, add each user under Audience → Test users.
 
 ## Project structure
 
 ```
 src/
-  config/        app config, database, sessions, Socket.IO, passport, uploads
+  config/        app config, database, Better Auth (auth.ts), Socket.IO, uploads
   controllers/   HTTP handlers (parse + validate input, call services)
   handlers/      Socket.IO event handlers
   services/      business logic, background jobs (calendar-jobs.ts)
   models/        Mongoose schemas
   validation/    Zod schemas
   routes/        Express routers
-  middlewares/   auth, error handling, session tracking
+  middlewares/   session lookup, auth guard, error handling
   utils/         Google Calendar client, token encryption, time zones, caches
 ```
 

@@ -20,7 +20,7 @@ export const verificationEmailTemplate = `
       <a href="{verificationLink}" style="background-color: #2196F3; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify</a>
     </div>
     <p>Enter this code on the verification page to complete your registration.</p>
-    <p>This code will expire in 5 minutes for security reasons.</p>
+    <p>This code will expire in 10 minutes for security reasons.</p>
     <p>If you didn't create an account with us, please ignore this email.</p>
     <p>Best regards,<br>Team Task</p>
   </div>
@@ -123,6 +123,31 @@ export const workspaceInvitationTemplate = `
   </div>
   <div style="text-align: center; margin-top: 20px; color: #888; font-size: 0.8em;">
     <p>This is an automated message, please do not reply to this email.</p>
+  </div>
+</body>
+</html>
+`;
+
+export const passwordResetCodeTemplate = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset your password</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background: linear-gradient(to right, #2196F3, #1976D2); padding: 20px; text-align: center;">
+    <h1 style="color: white; margin: 0;">Reset your password</h1>
+  </div>
+  <div style="background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+    <p>Hello,</p>
+    <p>Use this code to choose a new password for Team Task:</p>
+    <div style="text-align: center; margin: 30px 0;">
+      <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #2196F3;">{resetCode}</span>
+    </div>
+    <p>The code expires in 10 minutes. If you didn't ask to reset your password, you can ignore this email: your password stays the same.</p>
+    <p>Best regards,<br>Team Task</p>
   </div>
 </body>
 </html>
