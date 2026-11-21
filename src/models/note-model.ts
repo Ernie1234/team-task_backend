@@ -12,6 +12,8 @@ export interface NoteDocument extends Document {
   content: unknown[];
   /** Plain-text start of the note, for previews and search */
   excerpt: string;
+  /** Live-editing document (Yjs state). The editor works on this; `content` is a snapshot of it */
+  ydoc: Buffer | null;
   workspace: Types.ObjectId;
   createdBy: Types.ObjectId;
   lastEditedBy: Types.ObjectId;
@@ -29,6 +31,7 @@ const noteSchema = new Schema<NoteDocument>(
     emoji: { type: String, default: null },
     content: { type: [Schema.Types.Mixed], default: [] },
     excerpt: { type: String, default: "" },
+    ydoc: { type: Buffer, default: null, select: false },
     workspace: { type: Schema.Types.ObjectId, ref: "Workspace", required: true },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     lastEditedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },

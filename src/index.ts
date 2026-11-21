@@ -10,6 +10,7 @@ import { config } from "./config/app.config";
 import Logger from "./utils/logger";
 import morganMiddleware from "./middlewares/morgan-middleware";
 import { connectDB, disconnectDB } from "./config/db";
+import { flushNoteSessions } from "./services/note-collab-service";
 import { errorHandler } from "./middlewares/errorHandlerMiddleware";
 import { asyncHandler } from "./middlewares/asyncHandlerMiddleware";
 import { BadRequestException } from "./utils/appError";
@@ -149,6 +150,9 @@ const shutdown = async (signal: string) => {
 
     await httpClosed;
     Logger.info("🔒 HTTP and Socket.IO server closed");
+
+    // Write any live-edited notes that haven't been saved yet
+    await flushNoteSessions();
 
     // 2. Close the databases last, after in-flight requests have finished
     await Promise.all([disconnectDB(), authMongoClient.close()]);

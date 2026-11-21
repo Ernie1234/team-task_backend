@@ -3,6 +3,7 @@ import NoteModel, { type NoteDocument } from "@/models/note-model";
 import { getSocketService } from "@/config/socket.config";
 import { BadRequestException, ForbiddenException, NotFoundException } from "@/utils/appError";
 import type { CreateNoteType, UpdateNoteType } from "@/validation/note-validation";
+import { closeDeletedNotes, hasLiveSession, revokeNoteAccess } from "@/services/note-collab-service";
 
 const AUTHOR = "name profilePicture";
 
@@ -23,7 +24,7 @@ const emitNoteChanged = (note: Pick<NoteDocument, "_id" | "workspace" | "visibil
 };
 
 /** Load a note the user can see, or throw 404 (private notes look like they don't exist) */
-const findVisibleNote = async (workspaceId: string, noteId: string, userId: string) => {
+export const findVisibleNote = async (workspaceId: string, noteId: string, userId: string) => {
   const note = await NoteModel.findOne({ _id: noteId, ...visibleTo(workspaceId, userId) });
   if (!note) throw new NotFoundException("Note not found");
   return note;
@@ -100,13 +101,28 @@ export const updateNoteService = async (workspaceId: string, noteId: string, use
     }
   }
 
+  const { live, ...changes } = data;
+  if (changes.content !== undefined && !live) {
+    if (hasLiveSession(noteId)) {
+      // People are editing it live; their shared document wins over this copy
+      delete changes.content;
+      delete changes.excerpt;
+    } else {
+      // Edited without the live editor: rebuild the live document from this content next time
+      note.ydoc = null;
+    }
+  }
+
   const wasShared = note.visibility === "workspace";
-  Object.assign(note, data, { lastEditedBy: userId });
+  Object.assign(note, changes, { lastEditedBy: userId });
   await note.save();
 
   emitNoteChanged(note, "updated", userId);
   // Made private: let the others' lists drop it
-  if (wasShared && note.visibility === "private") emitNoteChanged({ ...note.toObject(), visibility: "workspace" }, "deleted", userId);
+  if (wasShared && note.visibility === "private") {
+    emitNoteChanged({ ...note.toObject(), visibility: "workspace" }, "deleted", userId);
+    revokeNoteAccess(noteId, String(note.createdBy));
+  }
 
   await note.populate([
     { path: "createdBy", select: AUTHOR },
@@ -123,6 +139,7 @@ export const deleteNoteService = async (workspaceId: string, noteId: string, use
   }
   const ids = await collectTree(note._id);
   await NoteModel.deleteMany({ _id: { $in: ids } });
+  closeDeletedNotes(ids.map(String));
   emitNoteChanged(note, "deleted", userId);
   return { deletedIds: ids.map(String) };
 };

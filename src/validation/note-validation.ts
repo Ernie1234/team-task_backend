@@ -29,6 +29,8 @@ export const updateNoteSchema = z
     excerpt: z.string().max(400),
     visibility: z.enum(NOTE_VISIBILITY),
     parentNote: objectId().nullable(),
+    /** Sent by the live editor: content is a snapshot of the shared document */
+    live: z.boolean(),
   })
   .partial()
   .strict();

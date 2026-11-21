@@ -18,7 +18,7 @@ type Ack = (response: { ok: boolean; error?: string; [key: string]: unknown }) =
  * Wrap a handler so it always answers the client's ack (when given) and turns
  * errors into { ok: false, error } instead of crashing or going silent.
  */
-const withAck =
+export const withAck =
   (name: string, handler: (data: any) => Promise<Record<string, unknown> | void>) =>
   async (data: any, ack?: Ack) => {
     const respond: Ack = typeof ack === "function" ? ack : () => {};

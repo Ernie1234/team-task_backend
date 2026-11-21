@@ -7,6 +7,8 @@ import Logger from "@/utils/logger";
 import UserModel, { type UserDocument } from "@/models/user-model";
 import MemberModel from "@/models/member-model";
 import { chatSocketHandlers } from "@/handlers/chat-socket.handlers";
+import { noteSocketHandlers } from "@/handlers/note-socket.handlers";
+import { setNoteCollabServer } from "@/services/note-collab-service";
 
 export interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -47,6 +49,7 @@ export class SocketService {
       pingInterval: 10000,
       pingTimeout: 5000,
     });
+    setNoteCollabServer(this.io);
 
     this.setupMiddleware();
     this.setupEventHandlers();
@@ -144,6 +147,8 @@ export class SocketService {
 
         // Set up chat handlers
         chatSocketHandlers(socket, this.io);
+        // Live co-editing of Notes
+        noteSocketHandlers(socket);
 
         // Handle disconnect
         socket.on("disconnect", (reason) => {

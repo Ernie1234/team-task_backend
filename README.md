@@ -17,6 +17,7 @@ Unticked items are on the [roadmap](#roadmap).
 - [x] **Chat:** workspace, project and direct channels; presence, typing, read state, replies, reactions, edits and deletes; message search
 - [x] **Uploads:** images and files with type and size limits, served only to signed-in users
 - [x] **Notes:** Notion-style pages (block JSON), nested sub-pages, private or shared visibility, cycle-safe moves, size limits
+- [x] **Live co-editing (Yjs):** one shared document per open note over Socket.IO, merged edits and cursors, debounced saves to MongoDB, automatic conversion of older notes, access re-checked on join and revoked when a page goes private
 - [x] **Calendar:** events API, two-way Google Calendar sync over OAuth (encrypted tokens, automatic refresh, revoke on disconnect)
 - [x] **Reminders:** background job claims due reminders atomically and sends a live socket event plus a notification; snooze
 - [x] **Notifications:** persisted per workspace, delivered live over Socket.IO
@@ -41,7 +42,7 @@ Backend items from the [main roadmap](https://github.com/Ernie1234/team-task_fro
 - [ ] Background-jobs service in **Go** (reminders, calendar sync, email) on a Redis / NATS queue
 - [ ] Analytics service in **Python (FastAPI)**
 - [ ] "Ask your workspace" (RAG with LangChain and a vector store) and an AI notes assistant
-- [ ] Real-time co-editing backend for Notes (Yjs)
+- [x] Real-time co-editing backend for Notes (Yjs)
 - [ ] Email notifications and a daily digest
 - [ ] Audit log, recurring tasks, task dependencies, time tracking
 - [ ] Public REST API with API keys and webhooks

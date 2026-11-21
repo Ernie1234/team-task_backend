@@ -25,6 +25,7 @@ Before finishing any change: type-check must pass, and run any tests for the are
 
 - Bun, Express 5, MongoDB with Mongoose, Better Auth (email + code, Google; sessions in `auth_sessions`), Socket.IO, Zod.
 - **Auth:** configured in `config/auth.ts` and mounted at `/api/v1/auth` before `express.json()`. `attachSession` sets `req.user` (with `_id` as an ObjectId) and `req.authSession`. Better Auth uses the existing `users` collection (`emailVerified` → `isVerified`, `image` → `profilePicture`); logins live in `auth_accounts`. `migrateLegacyAuth()` copies old `accounts` on start. Don't add express-session or passport back.
+- **Live notes:** `services/note-collab-service.ts` holds one Yjs doc per open note (socket events `note:join|seed|update|awareness|leave`). The Yjs state (`note.ydoc`) is the source of truth while editing; `note.content` is a snapshot the editor PATCHes with `live: true` for previews and search.
 - **Layers:** `routes/` → `controllers/` (parse and validate with Zod, check membership/permissions) → `services/` (business logic, database) → `models/`. Controllers never talk to Mongoose directly.
 - **Validation:** every request body, param and query goes through a Zod schema in `validation/`. Update schemas are `.strict()`.
 - **Errors:** throw `BadRequestException`, `NotFoundException`, `UnauthorizedException`, `ForbiddenException` from `utils/appError`; the error middleware formats them.
