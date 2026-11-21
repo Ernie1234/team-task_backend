@@ -30,6 +30,7 @@ Unticked items are on the [roadmap](#roadmap).
 Backend items from the [main roadmap](https://github.com/Ernie1234/team-task_frontend#roadmap).
 
 - [x] Make tour guide tutorial for new account
+- [X] Switching to using BetterAuth instead of the regular login.
 - [ ] Deploy with a seeded demo account
 - [ ] Redis secondary storage for faster session lookups
 - [ ] Socket.IO Redis adapter for several instances
