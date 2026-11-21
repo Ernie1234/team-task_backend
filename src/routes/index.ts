@@ -11,10 +11,13 @@ import activitiesRoute from "./activities-route";
 import chatRoute from "./chat-route";
 import noteRoute from "./note-route";
 import calendarRoute from "./calendar-route";
+import emailRoute from "./email-route";
 
 const apiRouter: Router = Router();
 
 // Sign-in, sign-up and sessions are handled by Better Auth at /api/v1/auth (see index.ts)
+// Unsubscribe links from emails (signed, no sign-in needed)
+apiRouter.use("/email", emailRoute);
 apiRouter.use("/user", isAuthenticated, userRoute);
 apiRouter.use("/workspace", isAuthenticated, workspaceRoute);
 apiRouter.use("/members", isAuthenticated, membersRoute);

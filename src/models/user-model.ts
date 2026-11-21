@@ -3,6 +3,17 @@ import mongoose, { Document, Schema } from "mongoose";
 
 export type TourStatus = "pending" | "completed" | "skipped";
 
+export type EmailPrefs = {
+  taskAssigned: boolean;
+  taskUpdated: boolean;
+  eventReminder: boolean;
+  memberJoined: boolean;
+  digest: boolean;
+  /** Local hour (0-23) the daily digest goes out */
+  digestHour: number;
+  timeZone: string;
+};
+
 export interface UserDocument extends Document {
   name: string;
   email: string;
@@ -19,6 +30,10 @@ export interface UserDocument extends Document {
   appearance: Record<string, unknown> | null;
   /** Guided tour: "pending" for new accounts until they finish or skip it */
   tour: { status: TourStatus; updatedAt: Date } | null;
+  /** Which emails to send; missing on older accounts (the defaults apply) */
+  emailPrefs: EmailPrefs;
+  /** Local date ("2026-11-21") of the last daily digest, so it goes out once a day */
+  lastDigestOn: string | null;
   comparePassword(value: string): Promise<boolean>;
   omitPassword(): Omit<UserDocument, "password">;
   isVerified: boolean;
@@ -62,6 +77,16 @@ const userSchema = new Schema<UserDocument>(
     isOnline: { type: Boolean, default: false },
     lastSeen: { type: Date, default: null },
     appearance: { type: Schema.Types.Mixed, default: null },
+    emailPrefs: {
+      taskAssigned: { type: Boolean, default: true },
+      taskUpdated: { type: Boolean, default: false },
+      eventReminder: { type: Boolean, default: true },
+      memberJoined: { type: Boolean, default: false },
+      digest: { type: Boolean, default: true },
+      digestHour: { type: Number, default: 8, min: 0, max: 23 },
+      timeZone: { type: String, default: "UTC" },
+    },
+    lastDigestOn: { type: String, default: null },
     tour: {
       type: new Schema(
         {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidTimeZone } from "@/utils/zoned-time";
 
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a 6-digit hex colour like #4F46E5");
 
@@ -19,6 +20,21 @@ export const appearanceSchema = z
   .strict();
 
 export type AppearanceType = z.infer<typeof appearanceSchema>;
+
+/** Which emails to get, and when the daily digest arrives */
+export const emailPrefsSchema = z
+  .object({
+    taskAssigned: z.boolean(),
+    taskUpdated: z.boolean(),
+    eventReminder: z.boolean(),
+    memberJoined: z.boolean(),
+    digest: z.boolean(),
+    digestHour: z.number().int().min(0).max(23),
+    timeZone: z.string().max(64).refine(isValidTimeZone, "Unknown time zone"),
+  })
+  .partial()
+  .strict();
+export type EmailPrefsInput = z.infer<typeof emailPrefsSchema>;
 
 /** Finishing or skipping the guided tour */
 export const tourSchema = z.object({ status: z.enum(["completed", "skipped"]) });

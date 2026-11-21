@@ -8,6 +8,8 @@ import {
   revokeSessionController,
   updateAppearanceController,
   updateTourController,
+  updateEmailPrefsController,
+  sendTestDigestController,
   updateProfileController,
 } from "@/controllers/user-controller";
 import { Router } from "express";
@@ -17,6 +19,8 @@ const router = Router();
 router.get("/current", getCurrentUserController);
 router.put("/appearance", updateAppearanceController);
 router.patch("/tour", updateTourController);
+router.patch("/email-preferences", updateEmailPrefsController);
+router.post("/email-preferences/test-digest", sendTestDigestController);
 router.get("/account", getAccountController);
 router.patch("/profile", updateProfileController);
 router.post("/password", changePasswordController);

@@ -21,6 +21,7 @@ import SocketService from "./config/socket.config";
 import { attachSession, isAuthenticated } from "./middlewares/isAuthenticatedMiddleware";
 import { IMAGE_EXTENSIONS, UPLOAD_ROOT } from "./config/uploads";
 import { startCalendarJobs, stopCalendarJobs } from "./services/calendar-jobs";
+import { startEmailJobs, stopEmailJobs } from "./services/email-jobs";
 
 const app = express();
 const server = createServer(app);
@@ -102,6 +103,7 @@ const startServer = async () => {
       );
       Logger.info(`🚀 Socket.IO server initialized`);
       startCalendarJobs();
+      startEmailJobs();
     });
 
     process.on("SIGTERM", () => void shutdown("SIGTERM"));
@@ -135,6 +137,7 @@ const shutdown = async (signal: string) => {
   try {
     // 0. No new reminders or calendar syncs while shutting down
     stopCalendarJobs();
+    stopEmailJobs();
 
     // 1. Stop accepting connections, mark users offline, disconnect sockets.
     //    (Socket.IO's close also closes the HTTP server.)

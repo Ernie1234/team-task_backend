@@ -177,3 +177,38 @@ export const sendPasswordResetCodeEmail = async (email: string, code: string): P
     category: "Password Reset",
   });
 };
+
+/** App emails (notifications, digest). Logged instead of sent when email isn't set up. */
+export const sendAppEmail = async ({
+  to,
+  subject,
+  html,
+  text,
+  category,
+  unsubscribeUrl,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  category: string;
+  unsubscribeUrl?: string;
+}) => {
+  if (!isMailEnabled) {
+    Logger.warn(`[mail disabled] "${subject}" to ${to}\n${text}`);
+    return { sent: false };
+  }
+  await mailtrapClient.send({
+    from: sender,
+    to: [{ email: to }],
+    subject,
+    html,
+    text,
+    category,
+    // Lets Gmail and Apple Mail show their own one-click unsubscribe button
+    ...(unsubscribeUrl
+      ? { headers: { "List-Unsubscribe": `<${unsubscribeUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } }
+      : {}),
+  });
+  return { sent: true };
+};

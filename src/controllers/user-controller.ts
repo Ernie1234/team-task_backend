@@ -1,7 +1,9 @@
 import { HTTPSTATUS } from "@/config/http.config";
 import { asyncHandler } from "@/middlewares/asyncHandlerMiddleware";
-import { fetchCurrentUser, updateAppearanceService, updateTourService } from "@/services/user-service";
-import { appearanceSchema, tourSchema, changePasswordSchema, deleteAccountSchema, updateProfileSchema } from "@/validation/user-validation";
+import { fetchCurrentUser, updateAppearanceService, updateEmailPrefsService, updateTourService } from "@/services/user-service";
+import { sendTestDigest } from "@/services/email-service";
+import { isMailEnabled } from "@/mails/mailtrap";
+import { appearanceSchema, emailPrefsSchema, tourSchema, changePasswordSchema, deleteAccountSchema, updateProfileSchema } from "@/validation/user-validation";
 import {
   changePasswordService,
   deleteAccountService,
@@ -45,6 +47,20 @@ export const updateAppearanceController = asyncHandler(
 export const updateTourController = asyncHandler(async (req: Request, res: Response) => {
   const { tour } = await updateTourService(String(req.user?._id), tourSchema.parse(req.body ?? {}));
   return res.status(HTTPSTATUS.OK).json({ status: true, message: "Tour saved", tour });
+});
+
+export const updateEmailPrefsController = asyncHandler(async (req: Request, res: Response) => {
+  const { emailPrefs } = await updateEmailPrefsService(String(req.user?._id), emailPrefsSchema.parse(req.body ?? {}));
+  return res.status(HTTPSTATUS.OK).json({ status: true, message: "Email settings saved", emailPrefs });
+});
+
+export const sendTestDigestController = asyncHandler(async (req: Request, res: Response) => {
+  const { sent } = await sendTestDigest(String(req.user?._id));
+  return res.status(HTTPSTATUS.OK).json({
+    status: true,
+    sent,
+    message: sent ? "Test summary sent" : isMailEnabled ? "No email address on this account" : "Email isn't set up on the server, so the summary was written to its log",
+  });
 });
 
 export const getAccountController = asyncHandler(async (req: Request, res: Response) => {

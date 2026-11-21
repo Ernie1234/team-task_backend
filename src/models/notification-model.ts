@@ -22,6 +22,10 @@ export interface NotificationDocument extends Document {
   message: string;
   link: string;
   isRead: boolean;
+  /** false = waiting for the email job; unset on notifications from before email existed */
+  emailed?: boolean;
+  /** Which run of the email job picked it up */
+  emailBatch?: string;
   createdAt: Date;
 }
 
@@ -55,6 +59,8 @@ const notificationSchema = new Schema<NotificationDocument>(
       type: String,
       required: false,
     },
+    emailed: { type: Boolean },
+    emailBatch: { type: String },
     isRead: {
       type: Boolean,
       default: false,
@@ -67,6 +73,9 @@ const notificationSchema = new Schema<NotificationDocument>(
 
 // Main query: a user's notifications in one workspace, newest first
 notificationSchema.index({ recipient: 1, workspaceId: 1, createdAt: -1 });
+
+// The email job only looks at notifications still waiting to be emailed
+notificationSchema.index({ createdAt: 1 }, { partialFilterExpression: { emailed: false }, name: "email_queue" });
 
 const NotificationModel = mongoose.model<NotificationDocument>(
   "Notification",

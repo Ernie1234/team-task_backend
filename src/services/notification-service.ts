@@ -48,6 +48,7 @@ export const notifyUsers = async (inputs: CreateNotificationInput[]) => {
         ...input,
         type: input.type ?? NotificationTypeEnum.GENERAL,
         isRead: false,
+        emailed: false, // the email job decides whether it's worth an email
       }))
     );
 

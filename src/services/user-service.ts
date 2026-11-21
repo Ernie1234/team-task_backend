@@ -2,7 +2,8 @@ import MemberModel from "@/models/member-model";
 import UserModel from "@/models/user-model";
 import { BadRequestException } from "@/utils/appError";
 import Logger from "@/utils/logger";
-import type { AppearanceType, TourType } from "@/validation/user-validation";
+import type { AppearanceType, EmailPrefsInput, TourType } from "@/validation/user-validation";
+import { prefsOf } from "@/services/email-service";
 
 export const fetchCurrentUser = async (userId: string) => {
   // Fetch the user and their memberships together (one round trip, not three)
@@ -45,4 +46,11 @@ export const updateTourService = async (userId: string, { status }: TourType) =>
   const result = await UserModel.updateOne({ _id: userId }, { $set: { tour } });
   if (!result.matchedCount) throw new BadRequestException("User not Found!");
   return { tour };
+};
+
+export const updateEmailPrefsService = async (userId: string, changes: EmailPrefsInput) => {
+  const $set = Object.fromEntries(Object.entries(changes).map(([key, value]) => [`emailPrefs.${key}`, value]));
+  const user = await UserModel.findByIdAndUpdate(userId, { $set }, { new: true }).select("emailPrefs").lean();
+  if (!user) throw new BadRequestException("User not Found!");
+  return { emailPrefs: prefsOf(user) };
 };

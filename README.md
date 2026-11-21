@@ -21,6 +21,7 @@ Unticked items are on the [roadmap](#roadmap).
 - [x] **Calendar:** events API, two-way Google Calendar sync over OAuth (encrypted tokens, automatic refresh, revoke on disconnect)
 - [x] **Reminders:** background job claims due reminders atomically and sends a live socket event plus a notification; snooze
 - [x] **Notifications:** persisted per workspace, delivered live over Socket.IO
+- [x] **Email:** unread notifications emailed after 10 minutes and grouped per person, reminders emailed only when the app isn't open, a daily digest at each person's local hour (once per day, skipped when empty), signed one-click unsubscribe links with `List-Unsubscribe` headers
 - [x] **Account:** profile, set / change password, signed-in devices with remote log out, account deletion (soft delete with data clean-up)
 - [x] **Preferences:** per-user appearance settings synced across devices
 - [x] **Onboarding:** guided-tour state per user (pending for new accounts, then completed or skipped)
@@ -43,7 +44,7 @@ Backend items from the [main roadmap](https://github.com/Ernie1234/team-task_fro
 - [ ] Analytics service in **Python (FastAPI)**
 - [ ] "Ask your workspace" (RAG with LangChain and a vector store) and an AI notes assistant
 - [x] Real-time co-editing backend for Notes (Yjs)
-- [ ] Email notifications and a daily digest
+- [x] Email notifications and a daily digest
 - [ ] Audit log, recurring tasks, task dependencies, time tracking
 - [ ] Public REST API with API keys and webhooks
 
@@ -56,7 +57,8 @@ All routes are under `/api/v1`. Everything except `/auth` needs a signed-in sess
 | Area | Base path | Highlights |
 | --- | --- | --- |
 | Auth ([Better Auth](https://better-auth.com)) | `/auth` | `sign-up/email`, `sign-in/email`, `sign-in/social`, `sign-out`, `get-session`, `email-otp/verify-email`, `email-otp/send-verification-otp`, `email-otp/request-password-reset`, `email-otp/reset-password`, `callback/google` |
-| User & account | `/user` | `current`, `profile`, `password`, `sessions`, `appearance`, `tour`, `account`, `DELETE /` |
+| User & account | `/user` | `current`, `profile`, `password`, `sessions`, `appearance`, `tour`, `email-preferences` (+ `test-digest`), `account`, `DELETE /` |
+| Email | `/email` | `unsubscribe` (signed link, no sign-in) |
 | Workspaces | `/workspace` | create, update, delete, members, change role, invite by email, analytics, `dashboard/:id` |
 | Members | `/members` | join a workspace with an invite code |
 | Projects | `/projects` | CRUD and analytics per workspace |
