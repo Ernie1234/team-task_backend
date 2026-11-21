@@ -20,6 +20,10 @@ export const appearanceSchema = z
 
 export type AppearanceType = z.infer<typeof appearanceSchema>;
 
+/** Finishing or skipping the guided tour */
+export const tourSchema = z.object({ status: z.enum(["completed", "skipped"]) });
+export type TourType = z.infer<typeof tourSchema>;
+
 // Our own uploads, or an https image (e.g. the Google profile photo)
 const avatarUrl = z
   .string()

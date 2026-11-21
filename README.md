@@ -22,13 +22,14 @@ Unticked items are on the [roadmap](#roadmap).
 - [x] **Notifications:** persisted per workspace, delivered live over Socket.IO
 - [x] **Account:** profile, set / change password, signed-in devices with remote log out, account deletion (soft delete with data clean-up)
 - [x] **Preferences:** per-user appearance settings synced across devices
+- [x] **Onboarding:** guided-tour state per user (pending for new accounts, then completed or skipped)
 - [x] **Reliability:** graceful shutdown (sockets, HTTP, jobs, database), parallel queries for a remote database, Zod validation on every input
 
 ## Roadmap
 
 Backend items from the [main roadmap](https://github.com/Ernie1234/team-task_frontend#roadmap).
 
-- [ ] Make tour guide tutorial for new account
+- [x] Make tour guide tutorial for new account
 - [ ] Deploy with a seeded demo account
 - [ ] Redis secondary storage for faster session lookups
 - [ ] Socket.IO Redis adapter for several instances
@@ -53,7 +54,7 @@ All routes are under `/api/v1`. Everything except `/auth` needs a signed-in sess
 | Area | Base path | Highlights |
 | --- | --- | --- |
 | Auth ([Better Auth](https://better-auth.com)) | `/auth` | `sign-up/email`, `sign-in/email`, `sign-in/social`, `sign-out`, `get-session`, `email-otp/verify-email`, `email-otp/send-verification-otp`, `email-otp/request-password-reset`, `email-otp/reset-password`, `callback/google` |
-| User & account | `/user` | `current`, `profile`, `password`, `sessions`, `appearance`, `account`, `DELETE /` |
+| User & account | `/user` | `current`, `profile`, `password`, `sessions`, `appearance`, `tour`, `account`, `DELETE /` |
 | Workspaces | `/workspace` | create, update, delete, members, change role, invite by email, analytics, `dashboard/:id` |
 | Members | `/members` | join a workspace with an invite code |
 | Projects | `/projects` | CRUD and analytics per workspace |

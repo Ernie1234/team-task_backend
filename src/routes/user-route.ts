@@ -7,6 +7,7 @@ import {
   revokeOtherSessionsController,
   revokeSessionController,
   updateAppearanceController,
+  updateTourController,
   updateProfileController,
 } from "@/controllers/user-controller";
 import { Router } from "express";
@@ -15,6 +16,7 @@ const router = Router();
 
 router.get("/current", getCurrentUserController);
 router.put("/appearance", updateAppearanceController);
+router.patch("/tour", updateTourController);
 router.get("/account", getAccountController);
 router.patch("/profile", updateProfileController);
 router.post("/password", changePasswordController);

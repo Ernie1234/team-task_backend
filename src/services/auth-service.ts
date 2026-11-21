@@ -31,7 +31,16 @@ export const provisionNewUser = async (userId: string, name: string) => {
   await MemberModel.create({ userId: user._id, workspaceId: workspace._id, role: ownerRole._id, joinedAt: new Date() });
   await UserModel.updateOne(
     { _id: user._id },
-    { $set: { currentWorkspace: workspace._id, isActive: true, isOnline: false, lastSeen: null } }
+    {
+      $set: {
+        currentWorkspace: workspace._id,
+        isActive: true,
+        isOnline: false,
+        lastSeen: null,
+        // New accounts get the guided tour on their first visit
+        tour: { status: "pending", updatedAt: new Date() },
+      },
+    }
   );
 };
 

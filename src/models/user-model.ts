@@ -1,6 +1,8 @@
 import { compareValue, hashValue } from "@/utils/bcrypt-func";
 import mongoose, { Document, Schema } from "mongoose";
 
+export type TourStatus = "pending" | "completed" | "skipped";
+
 export interface UserDocument extends Document {
   name: string;
   email: string;
@@ -15,6 +17,8 @@ export interface UserDocument extends Document {
   lastSeen: Date | null;
   // Personal look of the app (theme, font, text size…), synced across devices
   appearance: Record<string, unknown> | null;
+  /** Guided tour: "pending" for new accounts until they finish or skip it */
+  tour: { status: TourStatus; updatedAt: Date } | null;
   comparePassword(value: string): Promise<boolean>;
   omitPassword(): Omit<UserDocument, "password">;
   isVerified: boolean;
@@ -58,6 +62,16 @@ const userSchema = new Schema<UserDocument>(
     isOnline: { type: Boolean, default: false },
     lastSeen: { type: Date, default: null },
     appearance: { type: Schema.Types.Mixed, default: null },
+    tour: {
+      type: new Schema(
+        {
+          status: { type: String, enum: ["pending", "completed", "skipped"], required: true },
+          updatedAt: { type: Date, default: Date.now },
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
   },
   {
     timestamps: true,

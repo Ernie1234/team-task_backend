@@ -1,7 +1,7 @@
 import { HTTPSTATUS } from "@/config/http.config";
 import { asyncHandler } from "@/middlewares/asyncHandlerMiddleware";
-import { fetchCurrentUser, updateAppearanceService } from "@/services/user-service";
-import { appearanceSchema, changePasswordSchema, deleteAccountSchema, updateProfileSchema } from "@/validation/user-validation";
+import { fetchCurrentUser, updateAppearanceService, updateTourService } from "@/services/user-service";
+import { appearanceSchema, tourSchema, changePasswordSchema, deleteAccountSchema, updateProfileSchema } from "@/validation/user-validation";
 import {
   changePasswordService,
   deleteAccountService,
@@ -41,6 +41,11 @@ export const updateAppearanceController = asyncHandler(
     });
   }
 );
+
+export const updateTourController = asyncHandler(async (req: Request, res: Response) => {
+  const { tour } = await updateTourService(String(req.user?._id), tourSchema.parse(req.body ?? {}));
+  return res.status(HTTPSTATUS.OK).json({ status: true, message: "Tour saved", tour });
+});
 
 export const getAccountController = asyncHandler(async (req: Request, res: Response) => {
   const { account } = await getAccountService(String(req.user?._id));
