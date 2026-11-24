@@ -30,33 +30,24 @@ const app = express();
 const server = createServer(app);
 const BASE_PATH = config.BASE_PATH;
 
-// Initialize Socket.IO service
 let socketService: SocketService;
 
-// Request id, request log line and metrics for every request
 app.use(requestObservability);
-// /health, /health/ready and /metrics (before CORS and sessions: probes don't need them)
 app.use(healthRoute);
 app.use(helmet());
-// CORS first, so the web app (another origin) can send cookies
 app.use(
   cors({
     origin: config.FRONTEND_ORIGIN,
     credentials: true,
-    // The web app shows this as an error reference
     exposedHeaders: ["X-Request-Id"],
   })
 );
 
-// Better Auth: sign-up, sign-in (email + Google), email codes, sessions.
-// Mounted before express.json() because it reads the raw request body itself.
 app.all(`${AUTH_BASE_PATH}/{*any}`, toNodeHandler(auth));
 
-// Notes carry whole editor documents, so allow bigger bodies than the 100 KB default
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// Who is calling: sets req.user / req.authSession from the Better Auth session cookie
 app.use(attachSession);
 app.use(bindUserToRequest);
 
@@ -69,8 +60,6 @@ app.get(
     });
   })
 );
-// Chat attachments. Only signed-in users can fetch them; the app on another
-// port loads images from here, so allow cross-origin embedding.
 app.use(
   "/uploads",
   isAuthenticated,
@@ -99,10 +88,8 @@ const startServer = async () => {
   try {
     await connectDB();
     await authMongoClient.connect();
-    // Logins created before Better Auth keep working (adds only what's missing)
     await migrateLegacyAuth().catch((error) => Logger.error("Couldn't move existing logins to Better Auth:", error));
     
-    // Initialize Socket.IO service with session middleware
     socketService = new SocketService(server);
     await socketService.resetStalePresence();
     
@@ -129,7 +116,6 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 const shutdown = async (signal: string) => {
   if (isShuttingDown) {
-    // Second Ctrl+C: stop waiting
     Logger.warn(`⚠️ Received ${signal} again, exiting immediately`);
     process.exit(1);
   }
@@ -137,7 +123,6 @@ const shutdown = async (signal: string) => {
   markDraining();
   Logger.info(`🛑 ${signal} received, shutting down gracefully...`);
 
-  // Last resort if something hangs (unref so it never keeps the process alive)
   const forceExit = setTimeout(() => {
     Logger.error(`⚠️ Shutdown took longer than ${SHUTDOWN_TIMEOUT_MS / 1000}s, forcing exit`);
     process.exit(1);
@@ -145,29 +130,22 @@ const shutdown = async (signal: string) => {
   forceExit.unref();
 
   try {
-    // 0. No new reminders or calendar syncs while shutting down
     stopCalendarJobs();
     stopEmailJobs();
 
-    // 1. Stop accepting connections, mark users offline, disconnect sockets.
-    //    (Socket.IO's close also closes the HTTP server.)
     const httpClosed = socketService
       ? socketService.close()
       : new Promise<void>((resolve) => server.close(() => resolve()));
 
-    // Idle keep-alive connections would otherwise hold server.close() open
     server.closeIdleConnections?.();
-    // Give in-flight requests a moment, then drop whatever is left
     const dropConnections = setTimeout(() => server.closeAllConnections?.(), 3000);
     dropConnections.unref();
 
     await httpClosed;
     Logger.info("🔒 HTTP and Socket.IO server closed");
 
-    // Write any live-edited notes that haven't been saved yet
     await flushNoteSessions();
-
-    // 2. Close the databases last, after in-flight requests have finished
+    
     await Promise.all([disconnectDB(), authMongoClient.close()]);
     Logger.info("🔌 Database connection closed");
 

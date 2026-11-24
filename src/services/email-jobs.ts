@@ -22,7 +22,6 @@ const guarded = (key: keyof typeof running, job: () => Promise<unknown>) => asyn
   }
 };
 
-/** Notification emails every 30 s; daily digests checked every 5 min */
 export const startEmailJobs = () => {
   if (timers.length) return;
   const queue = guarded("queue", () => processEmailQueue());

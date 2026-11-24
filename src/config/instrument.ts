@@ -1,11 +1,6 @@
 import * as Sentry from "@sentry/bun";
 import { getRequestContext } from "@/utils/request-context";
 
-/*
- * Sentry error tracking. Off unless SENTRY_DSN is set, so local development
- * and tests never send anything. Imported first in index.ts.
- */
-
 export const sentryEnabled = Boolean(process.env.SENTRY_DSN);
 
 const SECRET_HEADERS = ["cookie", "authorization", "set-cookie", "x-api-key"];
@@ -16,7 +11,6 @@ if (sentryEnabled) {
     environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || "development",
     release: process.env.SENTRY_RELEASE || undefined,
     tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
-    // No IP addresses, cookies or request bodies
     sendDefaultPii: false,
     beforeSend(event) {
       if (event.request) {
@@ -30,7 +24,6 @@ if (sentryEnabled) {
   });
 }
 
-/** Report an unexpected error with the request it happened in (no-op without a DSN) */
 export const reportError = (error: unknown, extra?: Record<string, unknown>) => {
   if (!sentryEnabled) return;
   Sentry.withScope((scope) => {
@@ -45,7 +38,6 @@ export const reportError = (error: unknown, extra?: Record<string, unknown>) => 
   });
 };
 
-/** Send what's queued before the process exits */
 export const flushErrorReports = async () => {
   if (sentryEnabled) await Sentry.close(2000);
 };

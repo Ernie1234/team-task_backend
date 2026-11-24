@@ -26,8 +26,6 @@ export const connectDB = async () => {
   }
 };
 
-// Every request makes a few database round trips, so this number is roughly
-// the minimum delay each one adds. Logged once at startup.
 const reportLatency = async () => {
   try {
     const db = mongoose.connection.db;
@@ -54,7 +52,6 @@ const reportLatency = async () => {
 };
 
 export const disconnectDB = async () => {
-  // Set before disconnecting so the "disconnected" handler below doesn't reconnect
   isShuttingDown = true;
   if (isConnected) {
     await mongoose.disconnect();
@@ -62,14 +59,12 @@ export const disconnectDB = async () => {
   }
 };
 
-// Optional: Auto-reconnect on connection loss
 mongoose.connection.on("disconnected", () => {
   isConnected = false;
   if (isShuttingDown) return;
   Logger.info("MongoDB disconnected - attempting to reconnect...");
   setTimeout(() => {
     connectDB().catch(() => {
-      /* already logged in connectDB */
     });
   }, 3000);
 });

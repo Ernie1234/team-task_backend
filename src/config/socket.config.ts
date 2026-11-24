@@ -15,7 +15,6 @@ export interface AuthenticatedSocket extends Socket {
   userId?: string;
   workspaceId?: string;
   user?: any;
-  /** Better Auth session id, so "log out of this device" can drop its sockets */
   sessionId?: string;
 }
 
